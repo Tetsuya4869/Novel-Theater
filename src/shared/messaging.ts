@@ -7,8 +7,11 @@ export interface RpcMap {
   startJob: { req: { chapter: ExtractedChapter }; res: { jobId: string } };
   /** 現在のジョブ状態を取得。 */
   getJob: { req: { ref: ChapterRef }; res: { job: JobState | null } };
-  /** 直近にサイドパネル対象となった章を取得（M1: 抽出テキスト表示用）。 */
-  getActiveChapter: { req: Record<string, never>; res: { chapter: ExtractedChapter | null; job: JobState | null } };
+  /** 直近にサイドパネル対象となった章・ジョブ・解析結果を取得。 */
+  getActiveChapter: {
+    req: Record<string, never>;
+    res: { chapter: ExtractedChapter | null; job: JobState | null; analysis: SceneAnalysis | null };
+  };
   /** 解析結果（テキストコマ）の取得。M2 で利用。 */
   getAnalysis: { req: { ref: ChapterRef }; res: { analysis: SceneAnalysis | null } };
   /** content script へ「この章を抽出してほしい」と依頼（サイドパネル/ポップアップから）。 */

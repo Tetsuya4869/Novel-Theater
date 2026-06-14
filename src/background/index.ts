@@ -1,7 +1,7 @@
 // background service worker: メッセージルータ。
 import { isRpcEnvelope, type RpcEnvelope, type RpcMap } from '@/shared/messaging';
 import { getActive } from './pipeline/jobStore';
-import { startJob } from './pipeline/orchestrator';
+import { regeneratePanel, startJob } from './pipeline/orchestrator';
 
 // 拡張アイコンのクリックでサイドパネルを開く設定。
 chrome.runtime.onInstalled.addListener(() => {
@@ -29,7 +29,11 @@ const handlers: { [M in keyof RpcMap]?: Handler<M> } = {
 
   getActiveChapter: async () => {
     const active = await getActive();
-    return { chapter: active?.chapter ?? null, job: active?.job ?? null };
+    return {
+      chapter: active?.chapter ?? null,
+      job: active?.job ?? null,
+      analysis: active?.analysis ?? null,
+    };
   },
 
   getJob: async () => {
@@ -38,13 +42,16 @@ const handlers: { [M in keyof RpcMap]?: Handler<M> } = {
   },
 
   getAnalysis: async () => {
-    // M2 で実装。
-    return { analysis: null };
+    const active = await getActive();
+    return { analysis: active?.analysis ?? null };
   },
 
   requestExtract: async () => ({ ok: true }),
 
-  regeneratePanel: async () => ({ ok: true }),
+  regeneratePanel: async ({ ref, index, promptOverride }) => {
+    await regeneratePanel(ref, index, promptOverride);
+    return { ok: true };
+  },
 };
 
 chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {

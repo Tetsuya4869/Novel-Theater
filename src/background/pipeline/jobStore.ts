@@ -1,20 +1,21 @@
-// ジョブ状態と直近の抽出章を保持する。MV3 の SW は再起動しうるため
+// ジョブ状態・抽出章・解析結果を保持する。MV3 の SW は再起動しうるため
 // chrome.storage.session に永続化して復元可能にする。
-import type { ChapterRef, ExtractedChapter, JobState } from '@/shared/types';
+import type { ChapterRef, ExtractedChapter, JobState, SceneAnalysis } from '@/shared/types';
 
 const ACTIVE_KEY = 'nt:active';
 
-interface ActiveState {
+export interface ActiveState {
   chapter: ExtractedChapter;
   job: JobState;
+  analysis: SceneAnalysis | null;
+  settingsHash: string;
 }
 
 function refKey(ref: ChapterRef): string {
   return `${ref.site}:${ref.workId}:${ref.chapterId}`;
 }
 
-export async function setActive(chapter: ExtractedChapter, job: JobState): Promise<void> {
-  const state: ActiveState = { chapter, job };
+export async function setActive(state: ActiveState): Promise<void> {
   await chrome.storage.session.set({ [ACTIVE_KEY]: state });
 }
 
@@ -23,11 +24,19 @@ export async function getActive(): Promise<ActiveState | null> {
   return (r[ACTIVE_KEY] as ActiveState) ?? null;
 }
 
+export async function patchActive(patch: Partial<ActiveState>): Promise<ActiveState | null> {
+  const active = await getActive();
+  if (!active) return null;
+  const next = { ...active, ...patch };
+  await setActive(next);
+  return next;
+}
+
 export async function updateJob(patch: Partial<JobState>): Promise<JobState | null> {
   const active = await getActive();
   if (!active) return null;
   const job: JobState = { ...active.job, ...patch };
-  await chrome.storage.session.set({ [ACTIVE_KEY]: { ...active, job } });
+  await setActive({ ...active, job });
   return job;
 }
 

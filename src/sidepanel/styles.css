@@ -21,6 +21,15 @@ body { margin: 0; }
   font-size: 12px; opacity: .7; margin-bottom: 10px;
 }
 
+.progress {
+  padding: 8px 14px;
+  font-size: 12px;
+  background: color-mix(in srgb, #6d5dfc 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+.progress.error { background: color-mix(in srgb, #e44 16%, transparent); }
+.progress .err { margin-top: 4px; opacity: .85; }
+
 .panel-card {
   border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   border-radius: 10px;
@@ -28,9 +37,19 @@ body { margin: 0; }
   margin-bottom: 10px;
   background: color-mix(in srgb, currentColor 4%, transparent);
 }
+.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .panel-card .idx { font-size: 11px; opacity: .55; }
+.panel-card .status { font-size: 11px; opacity: .7; }
+.card-head button.small { margin-left: auto; font-size: 11px; padding: 3px 8px; }
 .panel-card .text { font-size: 13px; line-height: 1.7; margin-top: 4px; white-space: pre-wrap; }
+.panel-card .text.dialogue { opacity: .85; }
 .panel-card img { width: 100%; border-radius: 8px; display: block; margin-bottom: 6px; }
+.placeholder {
+  aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; margin-bottom: 6px; font-size: 12px; text-align: center; padding: 12px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.placeholder.error { background: color-mix(in srgb, #e44 14%, transparent); }
 
 button.primary {
   font: inherit; font-weight: 600; color: #fff;

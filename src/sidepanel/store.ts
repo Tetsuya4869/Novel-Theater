@@ -28,10 +28,7 @@ export const useStore = create<SidePanelState>((set) => ({
   refresh: async () => {
     set({ loading: true });
     try {
-      const { chapter, job } = await sendRpc('getActiveChapter', {});
-      const analysis = chapter
-        ? (await sendRpc('getAnalysis', { ref: chapter.ref })).analysis
-        : null;
+      const { chapter, job, analysis } = await sendRpc('getActiveChapter', {});
       set({ chapter, job, analysis });
     } finally {
       set({ loading: false });

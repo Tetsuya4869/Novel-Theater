@@ -3,8 +3,17 @@ import { useStore } from './store';
 import { PanelGrid } from './components/PanelGrid';
 import { isPushEvent } from '@/shared/messaging';
 
+const PHASE_LABEL: Record<string, string> = {
+  extracting: '本文を抽出中…',
+  analyzing: 'シーンを解析中…',
+  generating: 'コマ絵を生成中…',
+  done: '完成',
+  error: 'エラー',
+  idle: '',
+};
+
 export function App() {
-  const { chapter, loading, refresh, setJob, addImage } = useStore();
+  const { chapter, job, loading, refresh, setJob, addImage } = useStore();
 
   useEffect(() => {
     refresh();
@@ -32,6 +41,15 @@ export function App() {
           ⚙ 設定
         </button>
       </header>
+      {job && job.phase !== 'idle' && (
+        <div className={`progress ${job.phase}`}>
+          {PHASE_LABEL[job.phase] ?? job.phase}
+          {job.phase === 'generating' &&
+            job.panels.length > 0 &&
+            `（${job.panels.filter((p) => p.status === 'done').length}/${job.panels.length}）`}
+          {job.phase === 'error' && job.error && <div className="err">{job.error}</div>}
+        </div>
+      )}
       <div className="content">
         {loading && !chapter ? (
           <div className="empty">読み込み中…</div>
