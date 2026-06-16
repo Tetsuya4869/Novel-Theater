@@ -9,6 +9,8 @@ export interface ActiveState {
   job: JobState;
   analysis: SceneAnalysis | null;
   settingsHash: string;
+  /** 起点となったタブ（スクロール中継・再実行に使用）。 */
+  tabId?: number;
 }
 
 function refKey(ref: ChapterRef): string {

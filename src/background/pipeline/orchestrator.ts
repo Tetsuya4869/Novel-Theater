@@ -21,12 +21,12 @@ function emitJob(job: JobState): void {
 }
 
 /** 章のジョブを開始する（抽出 → 解析 → 画像生成）。 */
-export async function startJob(chapter: ExtractedChapter): Promise<string> {
+export async function startJob(chapter: ExtractedChapter, tabId?: number): Promise<string> {
   const settings = await loadSettings();
   const hash = await settingsHash(settings);
   const job = newJob(chapter.ref);
 
-  await setActive({ chapter, job, analysis: null, settingsHash: hash });
+  await setActive({ chapter, job, analysis: null, settingsHash: hash, tabId });
 
   // キャッシュ命中なら即復元。
   const cached = await getCachedChapter(chapter.ref, hash);
@@ -142,6 +142,13 @@ async function setPanelStatus(
   const job = { ...active.job, panels };
   await setActive({ ...active, job });
   emitJob(job);
+}
+
+/** 直近の章でジョブを再実行する（エラー後の再試行）。 */
+export async function retryJob(): Promise<void> {
+  const active = await getActive();
+  if (!active) return;
+  await startJob(active.chapter, active.tabId);
 }
 
 /** 単一コマの再生成。 */

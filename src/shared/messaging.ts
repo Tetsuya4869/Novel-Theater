@@ -18,6 +18,10 @@ export interface RpcMap {
   requestExtract: { req: Record<string, never>; res: { ok: boolean } };
   /** 単一コマの再生成（M4）。 */
   regeneratePanel: { req: { ref: ChapterRef; index: number; promptOverride?: string }; res: { ok: boolean } };
+  /** side panel → content script: ページを該当段落へスクロール（background が中継）。 */
+  scrollToParagraph: { req: { paragraph: number }; res: { ok: boolean } };
+  /** side panel → background: 直近の章でジョブを再実行。 */
+  retryJob: { req: Record<string, never>; res: { ok: boolean } };
 }
 
 export type RpcMethod = keyof RpcMap;

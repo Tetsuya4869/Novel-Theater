@@ -1,7 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { PanelCard } from './PanelCard';
-import { useStore } from '../store';
+import { panelForParagraph, useStore } from '../store';
 import { sendRpc } from '@/shared/messaging';
-import type { PanelStatus } from '@/shared/types';
+import type { Panel, PanelStatus } from '@/shared/types';
 
 /** 段落をおおまかに数ブロックへまとめて表示する（解析前の暫定表示）。 */
 function chunkParagraphs(paragraphs: string[], target = 8): string[] {
@@ -15,11 +16,24 @@ function chunkParagraphs(paragraphs: string[], target = 8): string[] {
 }
 
 export function PanelGrid() {
-  const { chapter, analysis, job, images } = useStore();
+  const { chapter, analysis, job, images, visibleParagraph } = useStore();
+  const activeIndex = panelForParagraph(analysis, visibleParagraph);
+  const activeRef = useRef<HTMLDivElement>(null);
+
+  // 読書位置に合わせてアクティブなコマを表示位置へスクロール。
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [activeIndex]);
 
   const regenerate = (index: number) => {
     if (!chapter) return;
     void sendRpc('regeneratePanel', { ref: chapter.ref, index });
+  };
+
+  const jump = (panel: Panel) => {
+    if (panel.sourceParagraphs) {
+      void sendRpc('scrollToParagraph', { paragraph: panel.sourceParagraphs[0] });
+    }
   };
 
   if (analysis) {
@@ -31,12 +45,15 @@ export function PanelGrid() {
         {analysis.panels.map((p) => (
           <PanelCard
             key={p.index}
+            ref={p.index === activeIndex ? activeRef : undefined}
             index={p.index}
             panel={p}
             imageUrl={images[p.index]}
             status={statusOf(p.index)}
             error={errorOf(p.index)}
+            active={p.index === activeIndex}
             onRegenerate={regenerate}
+            onJump={jump}
           />
         ))}
       </div>

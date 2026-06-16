@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from './store';
 import { PanelGrid } from './components/PanelGrid';
-import { isPushEvent } from '@/shared/messaging';
+import { isPushEvent, sendRpc } from '@/shared/messaging';
 
 const PHASE_LABEL: Record<string, string> = {
   extracting: '本文を抽出中…',
@@ -13,7 +13,7 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 export function App() {
-  const { chapter, job, loading, refresh, setJob, addImage } = useStore();
+  const { chapter, job, loading, refresh, setJob, addImage, setVisibleParagraph } = useStore();
 
   useEffect(() => {
     refresh();
@@ -24,11 +24,15 @@ export function App() {
         refresh();
       } else if (msg.type === 'panel:image') {
         addImage({ index: msg.index, dataUrl: msg.dataUrl });
+      } else if (msg.type === 'visible:paragraph') {
+        setVisibleParagraph(msg.paragraph);
       }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, [refresh, setJob, addImage]);
+  }, [refresh, setJob, addImage, setVisibleParagraph]);
+
+  const isKeyError = !!job?.error && /API キー/.test(job.error);
 
   return (
     <div className="app">
@@ -48,6 +52,19 @@ export function App() {
             job.panels.length > 0 &&
             `（${job.panels.filter((p) => p.status === 'done').length}/${job.panels.length}）`}
           {job.phase === 'error' && job.error && <div className="err">{job.error}</div>}
+          {job.phase === 'error' && (
+            <div className="err-actions">
+              {isKeyError ? (
+                <button className="ghost small" onClick={() => chrome.runtime.openOptionsPage()}>
+                  ⚙ 設定を開く
+                </button>
+              ) : (
+                <button className="ghost small" onClick={() => void sendRpc('retryJob', {})}>
+                  🔄 再試行
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
       <div className="content">

@@ -15,4 +15,10 @@ export interface SiteAdapter {
    * @param doc 対象ドキュメント（テスト時は jsdom/linkedom の Document）
    */
   extract(doc: Document, loc: Location): Promise<ExtractedChapter>;
+
+  /**
+   * 本文コンテナ要素を返す（読書位置同期用）。hydration 待ちを含むため async。
+   * 取得できなければ null。
+   */
+  getBodyElement(doc: Document): Promise<Element | null>;
 }

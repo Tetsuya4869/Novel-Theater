@@ -1,14 +1,17 @@
+import { forwardRef } from 'react';
 import type { Panel, PanelStatus } from '@/shared/types';
 
 interface Props {
   index: number;
   panel?: Panel;
-  /** M1: 解析前の素テキスト表示用。 */
+  /** 解析前の素テキスト表示用。 */
   rawText?: string;
   imageUrl?: string;
   status?: PanelStatus;
   error?: string;
+  active?: boolean;
   onRegenerate?: (index: number) => void;
+  onJump?: (panel: Panel) => void;
 }
 
 const STATUS_LABEL: Record<PanelStatus, string> = {
@@ -18,12 +21,20 @@ const STATUS_LABEL: Record<PanelStatus, string> = {
   error: 'エラー',
 };
 
-export function PanelCard({ index, panel, rawText, imageUrl, status, error, onRegenerate }: Props) {
+export const PanelCard = forwardRef<HTMLDivElement, Props>(function PanelCard(
+  { index, panel, rawText, imageUrl, status, error, active, onRegenerate, onJump },
+  ref,
+) {
   return (
-    <div className="panel-card">
+    <div className={`panel-card${active ? ' active' : ''}`} ref={ref}>
       <div className="card-head">
         <span className="idx">#{index + 1}</span>
         {status && status !== 'done' && <span className="status">{STATUS_LABEL[status]}</span>}
+        {panel && onJump && (
+          <button className="ghost small" onClick={() => onJump(panel)} title="本文の該当箇所へ">
+            📖 本文へ
+          </button>
+        )}
         {panel && onRegenerate && (
           <button className="ghost small" onClick={() => onRegenerate(index)}>
             🔄 再生成
@@ -56,4 +67,4 @@ export function PanelCard({ index, panel, rawText, imageUrl, status, error, onRe
       )}
     </div>
   );
-}
+});

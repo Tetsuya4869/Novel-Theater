@@ -47,6 +47,10 @@ export const narouAdapter: SiteAdapter = {
     const chapter: ExtractedChapter = { ref, title, ...built };
     return chapter;
   },
+
+  async getBodyElement(doc) {
+    return queryFirst(doc, BODY_SELECTORS);
+  },
 };
 
 export type { ChapterRef };

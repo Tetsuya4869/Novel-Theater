@@ -1,7 +1,7 @@
 // background service worker: メッセージルータ。
-import { isRpcEnvelope, type RpcEnvelope, type RpcMap } from '@/shared/messaging';
+import { isRpcEnvelope, sendRpcToTab, type RpcEnvelope, type RpcMap } from '@/shared/messaging';
 import { getActive } from './pipeline/jobStore';
-import { regeneratePanel, startJob } from './pipeline/orchestrator';
+import { regeneratePanel, retryJob, startJob } from './pipeline/orchestrator';
 
 // 拡張アイコンのクリックでサイドパネルを開く設定。
 chrome.runtime.onInstalled.addListener(() => {
@@ -23,7 +23,7 @@ const handlers: { [M in keyof RpcMap]?: Handler<M> } = {
         /* 起点要件を満たさない場合は無視（ユーザーが手動で開く） */
       }
     }
-    const jobId = await startJob(chapter);
+    const jobId = await startJob(chapter, sender.tab?.id);
     return { jobId };
   },
 
@@ -50,6 +50,23 @@ const handlers: { [M in keyof RpcMap]?: Handler<M> } = {
 
   regeneratePanel: async ({ ref, index, promptOverride }) => {
     await regeneratePanel(ref, index, promptOverride);
+    return { ok: true };
+  },
+
+  scrollToParagraph: async ({ paragraph }) => {
+    const active = await getActive();
+    if (active?.tabId != null) {
+      try {
+        await sendRpcToTab(active.tabId, 'scrollToParagraph', { paragraph });
+      } catch {
+        /* タブが閉じている等は無視 */
+      }
+    }
+    return { ok: true };
+  },
+
+  retryJob: async () => {
+    await retryJob();
     return { ok: true };
   },
 };

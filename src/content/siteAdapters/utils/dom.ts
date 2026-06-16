@@ -48,6 +48,17 @@ export function buildChapter(
 }
 
 /**
+ * extractParagraphs と同じフィルタ（非空 <p>）で段落要素を返す。
+ * 抽出した paragraphs 配列とインデックスが一致するため、読書位置同期に使える。
+ * <p> が無いレイアウトでは空配列を返す（同期は無効）。
+ */
+export function paragraphElements(container: Element): Element[] {
+  return Array.from(container.querySelectorAll('p')).filter(
+    (p) => normalizeLine(textWithoutRuby(p)).length > 0,
+  );
+}
+
+/**
  * セレクタに要素が現れるまで待つ（カクヨムの hydration 対策）。
  * ブラウザ専用（MutationObserver）。テストでは直接 extract に hydration 済み
  * Document を渡すため呼ばれない。

@@ -64,6 +64,12 @@ export const kakuyomuAdapter: SiteAdapter = {
     const chapter: ExtractedChapter = { ref, title, ...built };
     return chapter;
   },
+
+  async getBodyElement(doc) {
+    const el = queryFirst(doc, BODY_SELECTORS);
+    if (el || typeof MutationObserver === 'undefined') return el;
+    return waitForSelector(doc, BODY_SELECTORS[0]);
+  },
 };
 
 interface NextDataResult {
