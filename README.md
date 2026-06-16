@@ -43,6 +43,7 @@ src/
 ├─ sidepanel/    コマ表示 UI（React）
 ├─ options/      API キー・プロバイダ設定（React）
 ├─ popup/        サイドパネルを開く
+├─ video/        紙芝居動画（Ken Burns・字幕・TTS・WebM 書き出し）
 └─ shared/       型・Zod スキーマ・設定・メッセージング
 ```
 
@@ -52,7 +53,9 @@ src/
 - **M2 LLM シーン解析** ✅ — 本文 → SceneAnalysis(JSON)（Claude / Gemini）
 - **M3 画像生成 + コマ表示** ✅ — 各コマの画像を生成して表示（OpenAI / Imagen / Stability）・IndexedDB キャッシュ・単一コマ再生成
 - **M4 仕上げ** ✅ — 読書位置同期（本文⇄コマ連動）・コスト確認ダイアログ・エラー再試行 UX
-- **M5 動画（紙芝居）** — Ken Burns・字幕・TTS・動画書き出し
+- **M5 動画（紙芝居）** ✅ — Ken Burns・字幕焼き込み・TTS ナレーション・WebM 書き出し
+
+すべてのマイルストーンが実装済みです。
 
 ## ライセンス
 

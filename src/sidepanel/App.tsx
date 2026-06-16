@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from './store';
 import { PanelGrid } from './components/PanelGrid';
+import { TheaterView } from './components/TheaterView';
 import { isPushEvent, sendRpc } from '@/shared/messaging';
 
 const PHASE_LABEL: Record<string, string> = {
@@ -13,7 +14,9 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 export function App() {
-  const { chapter, job, loading, refresh, setJob, addImage, setVisibleParagraph } = useStore();
+  const { chapter, job, images, loading, refresh, setJob, addImage, setVisibleParagraph } = useStore();
+  const [theaterOpen, setTheaterOpen] = useState(false);
+  const hasImages = Object.keys(images).length > 0;
 
   useEffect(() => {
     refresh();
@@ -41,9 +44,16 @@ export function App() {
           <h1>Novel-Theater</h1>
           {chapter && <div className="title">{chapter.title}</div>}
         </div>
-        <button className="ghost" onClick={() => chrome.runtime.openOptionsPage()}>
-          ⚙ 設定
-        </button>
+        <div className="header-actions">
+          {hasImages && (
+            <button className="ghost" onClick={() => setTheaterOpen(true)}>
+              🎞 紙芝居
+            </button>
+          )}
+          <button className="ghost" onClick={() => chrome.runtime.openOptionsPage()}>
+            ⚙ 設定
+          </button>
+        </div>
       </header>
       {job && job.phase !== 'idle' && (
         <div className={`progress ${job.phase}`}>
@@ -80,6 +90,7 @@ export function App() {
           </div>
         )}
       </div>
+      {theaterOpen && <TheaterView onClose={() => setTheaterOpen(false)} />}
     </div>
   );
 }
