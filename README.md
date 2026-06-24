@@ -23,16 +23,23 @@
 npm install      # 依存をインストール
 npm run dev      # 開発ビルド（HMR）
 npm run build    # 本番ビルド → dist/
-npm test         # 抽出器・スキーマのユニットテスト
+npm run validate # dist が読み込み可能な拡張か検証（manifest 参照アセットの存在確認）
+npm run package  # build + validate + 配布用 zip 生成 → release/
+npm test         # ユニットテスト
 npm run typecheck
 ```
 
-### 拡張機能の読み込み
+### 拡張機能の読み込み（開発）
 
 1. `npm run build`
 2. `chrome://extensions` を開き「デベロッパーモード」を ON
 3. 「パッケージ化されていない拡張機能を読み込む」で `dist/` を選択
 4. なろう / カクヨム の本文ページを開くと右下に「🎬 コマ絵化」ボタンが出ます
+
+### 配布用パッケージ
+
+`npm run package` で `release/novel-theater-v<version>.zip` を生成します
+（ソースマップ除外）。Chrome ウェブストアへのアップロードや手動配布に使えます。
 
 ## アーキテクチャ
 

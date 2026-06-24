@@ -5,12 +5,11 @@ export default defineManifest({
   name: 'Novel-Theater',
   version: '0.1.0',
   description: '小説、文章をコマ絵、動画化しながら読める',
-  default_locale: 'ja',
   icons: {
-    16: 'public/icons/icon16.png',
-    32: 'public/icons/icon32.png',
-    48: 'public/icons/icon48.png',
-    128: 'public/icons/icon128.png',
+    16: 'icons/icon16.png',
+    32: 'icons/icon32.png',
+    48: 'icons/icon48.png',
+    128: 'icons/icon128.png',
   },
   action: {
     default_popup: 'src/popup/index.html',
