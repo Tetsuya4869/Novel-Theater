@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (packages + scripts)
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Spike smoke test (offline, heuristic + dummy)
+        run: pnpm spike
+
+      # next build generates next-env.d.ts and type-checks the app,
+      # so it runs before the standalone web typecheck.
+      - name: Build web
+        run: pnpm build:web
+
+      - name: Typecheck (web)
+        run: pnpm typecheck:web
