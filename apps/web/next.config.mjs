@@ -5,6 +5,8 @@ const nextConfig = {
     "@novel-theater/ai",
     "@novel-theater/config",
     "@novel-theater/core",
+    "@novel-theater/db",
+    "@novel-theater/queue",
     "@novel-theater/storage",
     "@novel-theater/types",
   ],

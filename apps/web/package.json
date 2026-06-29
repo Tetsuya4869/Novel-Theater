@@ -13,6 +13,8 @@
     "@novel-theater/ai": "workspace:*",
     "@novel-theater/config": "workspace:*",
     "@novel-theater/core": "workspace:*",
+    "@novel-theater/db": "workspace:*",
+    "@novel-theater/queue": "workspace:*",
     "@novel-theater/storage": "workspace:*",
     "@novel-theater/types": "workspace:*",
     "next": "^15.1.0",

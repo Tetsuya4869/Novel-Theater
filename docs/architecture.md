@@ -9,17 +9,49 @@ packages/
   config/              環境変数検証(zod) + モデル定数/料金
   types/               共有ドメイン型 + 生成プロバイダのアダプタ interface
   core/                純粋関数（正規化 / ハッシュ / オフセット↔シーン）
-  storage/             オブジェクトストレージ抽象（Phase 0: LocalStorage）
+  storage/             オブジェクトストレージ抽象（LocalStorage）
+  db/                  永続化抽象 WorkRepository（InMemory / File）+ Prisma schema
+  queue/               ジョブキュー抽象 JobQueue（InProcessJobQueue ワーカープール）
   ai/                  AI 抽象化レイヤ（核）
     llm/               Claude ラッパ（adaptive thinking / structured outputs / refusal）
-    segment/           シーン分割（Claude / ヒューリスティック）
+    segment/           シーン分割（Claude / ヒューリスティック）+ 全文チャンク分割
     prompt/            画像プロンプト構築（Claude / テンプレート）
     image/             ImageProvider（dummy / fal アダプタ）
-    pipeline.ts        テキスト→シーン→プロンプト→コマ絵→保存
+    pipeline.ts        テキスト→シーン→プロンプト→コマ絵→保存（同期; spike 用）
+    service.ts         GenerationService（plan/先読み/再生成/コスト上限; Phase 1 中核）
     factory.ts         env から依存一式を組み立てる
 scripts/
   spike.ts             Phase 0 検証 CLI（UI より先に三大リスクを可視化）
 ```
+
+## Phase 1（読める劇場）の追加点
+
+非同期生成の流れ:
+
+```
+POST /api/generate
+  → 正規化 → content_hash でキャッシュ判定（再投入は既存 workId を即返す）
+  → 全文をシーン分割（章チャンク）→ 全シーンを captioned で永続化（WorkRepository）
+  → 現在地周辺(先頭4)の画像ジョブを JobQueue へ投入 → { workId } を返す
+リーダー（クライアント）
+  → /api/works/:id をポーリングして状態を反映（プレースホルダ→差し替え）
+  → スクロールに追従し /api/works/:id/prefetch で現在地周辺を先読み
+  → 目次サムネで各シーンの状態を可視化、/scenes/:id/regenerate で個別再生成
+ワーカー（InProcessJobQueue）
+  → 各シーン: プロンプト構築 → content_hash 再利用 or 画像生成 → 保存 → 状態更新
+  → コスト上限到達で以降を placeholder 化（capReached）。1 シーンの失敗は全体を止めない。
+```
+
+- **キュー＋ワーカー**: `JobQueue` interface が seam。Phase 1 既定は同一プロセスの
+  `InProcessJobQueue`（並列度制限のワーカープール）。本番は BullMQ + Redis アダプタを実装し、
+  `apps/worker` として別プロセスへ切り出して水平スケールする（§6 / §11.5）。
+- **永続化**: `WorkRepository` interface。Phase 1 既定は `FileWorkRepository`（`.data/works`、
+  content_hash 索引つき）。本番は `prisma/schema.prisma`（§8.1 の ER 図）に基づく
+  Postgres 実装へ差し替える。`DATABASE_URL` で切り替える設計。
+- **コスト/信頼性**: 作品単位のコスト上限（`capUSD`）をワーカーで強制、`content_hash`
+  によるアセット再利用、シーン個別リトライ、入力長上限（`NT_MAX_INPUT_CHARS`）。
+- **体感速度**: プログレッシブ表示（captioned→生成中→ready）＋先読み＋擬似アニメ
+  （Ken Burns、`prefers-reduced-motion` 尊重）。TTFM を北極星指標に置く（§11.1）。
 
 ## 設計上の要点
 
@@ -27,10 +59,11 @@ scripts/
 - **アダプタ抽象**: LLM / 画像 / 動画 / 音声はすべて `packages/types` の interface 越しに呼ぶ。プロバイダ差し替え・フォールバック・A/B を可能にする（§7.9）。
 - **オフライン動作**: API キーやプロバイダ未設定でも、ヒューリスティック分割＋ダミー画像で全経路が動く。三大リスクの検証を止めない。
 - **GitHub Pages の扱い**: `docs/` 配下を Pages 専用とし、アプリ本体は別アーキテクチャ（§1.5）。
-- **既知の Phase 0 簡略化**:
-  - 永続化は未導入（Web はプロセス内メモリの一時ストア。再起動で消える）。DB/キューは Phase 1。
+- **既知の簡略化（現状）**:
+  - 永続化はファイル（`.data/works`）。本番 Postgres への差し替えは `WorkRepository` で seam 済み。
+  - キュー＋ワーカーは同一プロセス（`InProcessJobQueue`）。Redis/BullMQ + 別プロセス worker は `JobQueue` で seam 済み。
+  - プロンプト構築（LLM）のコストは未計上（画像コストのみ集計）。動画化・ナレーションは未実装（Phase 2/3）。
   - LLM が返すオフセットは検証・クランプして堅牢化（R8）。破綻時は均等割りにフォールバック。
-  - 動画化・ナレーションは未実装（Phase 2/3）。
 
 ## 生成パイプライン（Phase 0 範囲）
 

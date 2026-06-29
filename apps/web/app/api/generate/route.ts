@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { maxInputChars, runGeneration } from "@/lib/generate";
-import { saveWork } from "@/lib/store";
+import { getService, maxInputChars } from "@/lib/services";
 
-// fs / crypto / 生成パイプラインを使うため Node ランタイムで動かす。
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
@@ -19,18 +17,18 @@ export async function POST(req: Request) {
   }
   const cap = maxInputChars();
   if (text.length > cap) {
-    return NextResponse.json(
-      { error: `テキストが長すぎます（上限 ${cap} 文字）` },
-      { status: 413 },
-    );
+    return NextResponse.json({ error: `テキストが長すぎます（上限 ${cap} 文字）` }, { status: 413 });
   }
 
   try {
-    const { work, metrics } = await runGeneration(text, body.title, body.style);
-    saveWork(work);
-    return NextResponse.json({ workId: work.id, metrics });
+    const result = await getService().plan(text, {
+      title: body.title,
+      style: body.style,
+      prefetchCount: 4,
+    });
+    return NextResponse.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "生成に失敗しました";
+    const message = err instanceof Error ? err.message : "生成計画に失敗しました";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getWork } from "@/lib/store";
+import { getService } from "@/lib/services";
+import { toWorkView } from "@/lib/view";
 import { Reader } from "@/components/reader/Reader";
 
 export const runtime = "nodejs";
@@ -11,9 +12,9 @@ export default async function TheaterPage({
   params: Promise<{ workId: string }>;
 }) {
   const { workId } = await params;
-  const work = getWork(workId);
+  const stored = await getService().getStored(workId);
 
-  if (!work) {
+  if (!stored) {
     return (
       <main className="container">
         <p>
@@ -21,24 +22,22 @@ export default async function TheaterPage({
         </p>
         <h1>作品が見つかりません</h1>
         <p className="muted">
-          Phase 0 の作品はプロセス内メモリに保持され、サーバー再起動で失われます（永続化は Phase 1）。
+          Phase 1 の作品は <code>.data/works</code> に永続化されます。サーバーを別環境で起動した場合は
+          作品データが共有されません（本番は Postgres）。
         </p>
       </main>
     );
   }
 
-  const ready = work.scenes.filter((s) => s.status === "image_ready").length;
+  const view = toWorkView(stored);
 
   return (
-    <main className="container">
+    <main className="container container--wide">
       <p>
         <Link href="/compose">← もう一度投入する</Link>
       </p>
-      <h1>{work.title}</h1>
-      <p className="muted">
-        {work.scenes.length} シーン ・ コマ絵 {ready} 枚生成済み
-      </p>
-      <Reader work={work} />
+      <h1>{view.work.title}</h1>
+      <Reader initial={view} />
     </main>
   );
 }

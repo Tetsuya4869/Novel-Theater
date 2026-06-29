@@ -6,6 +6,7 @@ export type { LLMClient, LLMCompleteParams, LLMResult } from "./llm/types";
 export { HeuristicSegmenter } from "./segment/heuristic";
 export { ClaudeSegmenter } from "./segment/claude";
 export { SCENE_SEGMENT_SCHEMA } from "./segment/schema";
+export { segmentFullText, type FullTextOptions } from "./segment/fulltext";
 
 // プロンプト構築
 export { TemplatePromptBuilder } from "./prompt/template";
@@ -33,3 +34,12 @@ export {
   createPipelineDeps,
   type AiCapabilities,
 } from "./factory";
+
+// サービス（Phase 1: キュー＋永続化を束ねるオーケストレーション）
+export {
+  GenerationService,
+  STYLE_PRESETS,
+  type GenerationServiceDeps,
+  type PlanOptions,
+  type PlanResult,
+} from "./service";

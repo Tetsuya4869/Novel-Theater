@@ -1,0 +1,67 @@
+// 本番（Postgres）のスキーマ（PLAN.md §8.1 の ER 図に対応）。
+// Phase 1 の検証は FileWorkRepository を使うため、この schema からの
+// クライアント生成・マイグレーションは「本番ワイヤリング時」に行う。
+// 生成: pnpm --filter @novel-theater/db exec prisma generate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Work {
+  id          String   @id @default(uuid())
+  title       String
+  sourceText  String   @db.Text
+  language    String   @default("ja")
+  visibility  String   @default("private")
+  contentHash String   @unique
+  settings    Json
+  costSpent   Float    @default(0)
+  capUsd      Float    @default(1.0)
+  capReached  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  scenes      Scene[]
+
+  @@index([contentHash])
+}
+
+model Scene {
+  id            String  @id @default(uuid())
+  workId        String
+  work          Work    @relation(fields: [workId], references: [id], onDelete: Cascade)
+  orderIndex    Int
+  sourceStart   Int
+  sourceEnd     Int
+  summary       String  @db.Text
+  imagePrompt   String  @db.Text
+  negativePrompt String? @db.Text
+  directingNotes Json
+  panelPriority Int
+  videoCandidate Boolean
+  seed          Int?
+  status        String
+  assets        Asset[]
+
+  @@index([workId, orderIndex])
+}
+
+model Asset {
+  id          String   @id @default(uuid())
+  sceneId     String
+  scene       Scene    @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  kind        String
+  storageUrl  String
+  providerId  String
+  contentHash String
+  cost        Float?
+  status      String
+  meta        Json
+  createdAt   DateTime @default(now())
+
+  @@index([contentHash])
+}

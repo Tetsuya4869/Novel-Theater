@@ -36,6 +36,19 @@ button {
   padding: 2rem 1.25rem;
 }
 
+.container--wide {
+  max-width: 1200px;
+}
+
+select {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+}
+
 .btn {
   background: var(--accent);
   color: #1a1208;
@@ -48,6 +61,79 @@ button {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn--sm {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  border-radius: 6px;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+/* 目次サムネ（シーン状態の可視化） */
+.toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.toc__cell {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0;
+  background: #2a2420;
+}
+
+.toc__cell--image_ready {
+  background: #3f7d4f;
+}
+.toc__cell--image_generating {
+  background: #c9a24a;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.toc__cell--failed {
+  background: #b04a4a;
+}
+.toc__cell--placeholder {
+  background: #6b5a3a;
+}
+.toc__cell[data-active="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* 擬似アニメ（Ken Burns）。動きを抑える設定では無効化する。 */
+.stage__frame {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ken-burns {
+    animation: kenburns 18s ease-in-out infinite alternate;
+    transform-origin: center;
+  }
+}
+
+@keyframes kenburns {
+  0% {
+    transform: scale(1) translate(0, 0);
+  }
+  100% {
+    transform: scale(1.08) translate(-1.5%, -1.5%);
+  }
 }
 
 textarea,
@@ -116,6 +202,10 @@ input[type="text"] {
 .stage__meta {
   padding: 0.75rem 1rem;
   font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .stage__placeholder {

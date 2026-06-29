@@ -17,9 +17,13 @@ coverage/
 out/
 next-env.d.ts
 
-# Generated media / local object storage (Phase 0 LocalStorage)
+# Generated media / local object storage (LocalStorage)
 .storage/
 apps/web/public/generated/
+
+# File-backed work repository (Phase 1 FileWorkRepository)
+.data/
+apps/web/.data/
 
 # Logs / editor
 *.log

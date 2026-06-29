@@ -32,6 +32,12 @@ importers:
       '@novel-theater/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@novel-theater/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@novel-theater/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@novel-theater/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -72,6 +78,12 @@ importers:
       '@novel-theater/core':
         specifier: workspace:*
         version: link:../core
+      '@novel-theater/db':
+        specifier: workspace:*
+        version: link:../db
+      '@novel-theater/queue':
+        specifier: workspace:*
+        version: link:../queue
       '@novel-theater/storage':
         specifier: workspace:*
         version: link:../storage
@@ -86,6 +98,14 @@ importers:
         version: 3.25.76
 
   packages/core: {}
+
+  packages/db:
+    dependencies:
+      '@novel-theater/types':
+        specifier: workspace:*
+        version: link:../types
+
+  packages/queue: {}
 
   packages/storage: {}
 

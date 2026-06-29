@@ -12,6 +12,8 @@
     "@anthropic-ai/sdk": "^0.30.0",
     "@novel-theater/config": "workspace:*",
     "@novel-theater/core": "workspace:*",
+    "@novel-theater/db": "workspace:*",
+    "@novel-theater/queue": "workspace:*",
     "@novel-theater/storage": "workspace:*",
     "@novel-theater/types": "workspace:*"
   }
