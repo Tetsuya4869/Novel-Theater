@@ -11,10 +11,12 @@ import type {
   Scene,
   SceneSegmenter,
   SegmentedScene,
+  VideoProvider,
   Work,
   WorkSettings,
 } from "@novel-theater/types";
 import { segmentFullText } from "./segment/fulltext";
+import { maxVideosForLevel, selectHighlightIndices } from "./highlights";
 
 /** アートスタイルのプリセット（§3.2 投入画面）。 */
 export const STYLE_PRESETS: ReadonlyArray<{ id: string; label: string; prompt: string }> = [
@@ -32,6 +34,7 @@ export interface GenerationServiceDeps {
   segmenter: SceneSegmenter;
   promptBuilder: PromptBuilder;
   imageProvider: ImageProvider;
+  videoProvider: VideoProvider;
 }
 
 export interface PlanOptions {
@@ -41,6 +44,8 @@ export interface PlanOptions {
   /** 投入直後に先読み生成するシーン数。 */
   prefetchCount?: number;
   costLimitUSD?: number;
+  /** "none" | "highlight" | "rich"（動画化レベル §7.6）。 */
+  videoLevel?: Work["settings"]["videoLevel"];
 }
 
 export interface PlanResult {
@@ -69,7 +74,7 @@ export class GenerationService {
     const settings: WorkSettings = {
       style: opts.style ?? DEFAULT_STYLE,
       panelDensity: "medium",
-      videoLevel: "none",
+      videoLevel: opts.videoLevel ?? "none",
       narration: false,
     };
     const hash = contentHash([normalized, JSON.stringify(settings), "v1"]);
@@ -108,6 +113,13 @@ export class GenerationService {
 
     const prefetch = opts.prefetchCount ?? 4;
     await this.enqueueScenes(workId, range(0, Math.min(prefetch, scenes.length)));
+
+    // 動画化レベルに応じてハイライトを自動で動画ジョブへ（§7.6）。
+    const maxVideos = maxVideosForLevel(settings.videoLevel);
+    if (maxVideos > 0) {
+      const highlights = selectHighlightIndices(scenes, maxVideos);
+      await this.enqueueVideos(workId, highlights);
+    }
 
     return { workId, cached: false, scenes: scenes.length };
   }
@@ -151,6 +163,48 @@ export class GenerationService {
     const i = stored.work.scenes.findIndex((s) => s.id === sceneId);
     if (i < 0) return false;
     const n = await this.enqueueScenes(workId, [i], { force: true });
+    return n > 0;
+  }
+
+  /** ハイライト等を動画ジョブへ投入する（§7.6）。戻り値は投入数。 */
+  async enqueueVideos(
+    workId: string,
+    indices: number[],
+    opts: { force?: boolean } = {},
+  ): Promise<number> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored) return 0;
+    let enqueued = 0;
+    for (const i of indices) {
+      const scene = stored.work.scenes[i];
+      if (!scene) continue;
+      if (!opts.force && scene.status === "video_ready") continue;
+      if (scene.status === "video_generating") continue;
+      if (stored.capReached && !opts.force) continue;
+
+      const jobId = opts.force
+        ? `${workId}:v${i}:r${Date.now()}:${this.forceCounter++}`
+        : `${workId}:v${i}`;
+      if (!opts.force && this.d.queue.has(jobId)) continue;
+
+      // 画像より後（現在地の画像生成を優先）。
+      this.d.queue.add({
+        id: jobId,
+        priority: 1000 + i,
+        run: () => this.runVideoJob(workId, i, Boolean(opts.force)),
+      });
+      enqueued++;
+    }
+    return enqueued;
+  }
+
+  /** 「このコマを動かす」明示トリガ（§7.6）。 */
+  async animateScene(workId: string, sceneId: string): Promise<boolean> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored) return false;
+    const i = stored.work.scenes.findIndex((s) => s.id === sceneId);
+    if (i < 0) return false;
+    const n = await this.enqueueVideos(workId, [i], { force: true });
     return n > 0;
   }
 
@@ -252,6 +306,93 @@ export class GenerationService {
       throw err instanceof Error ? err : new Error(String(err));
     }
   }
+
+  /**
+   * 1 シーンの image-to-video ジョブ（§7.6）。
+   * 画像が未生成なら先に生成し、コスト上限内で動画化する。
+   * 失敗時は静止画へフォールバック（scene を image_ready に戻し、全体は止めない）。
+   */
+  private async runVideoJob(workId: string, index: number, force: boolean): Promise<void> {
+    let stored = await this.d.repo.get(workId);
+    if (!stored) return;
+    let scene = stored.work.scenes[index];
+    if (!scene) return;
+    if (!force && scene.status === "video_ready") return;
+
+    if (stored.costSpentUSD >= stored.capUSD) {
+      stored.capReached = true;
+      await this.d.repo.save(stored); // 画像はそのまま（静止画フォールバック）。
+      return;
+    }
+
+    // 動画化にはコマ絵が必要。無ければ先に生成する。
+    let image = readyImage(scene);
+    if (!image) {
+      try {
+        await this.runSceneJob(workId, index, false);
+      } catch {
+        /* 画像生成失敗。下で再確認して諦める。 */
+      }
+      stored = (await this.d.repo.get(workId))!;
+      scene = stored.work.scenes[index]!;
+      image = readyImage(scene);
+      if (!image) return; // 画像が用意できなければ動画化はスキップ。
+    }
+
+    scene.status = "video_generating";
+    await this.d.repo.save(stored);
+
+    try {
+      const durationSec = clampDuration(scene.sourceEnd - scene.sourceStart);
+      const motionPrompt = scene.summary || scene.imagePrompt || "subtle camera motion";
+      const vid = await this.d.videoProvider.animate({
+        sourceImageUrl: image.storageUrl,
+        motionPrompt,
+        durationSec,
+      });
+      const videoHash = contentHash([image.contentHash, this.d.videoProvider.id, durationSec]);
+      const key = `${workId}/${scene.id}-video.${extForVideo(vid.contentType)}`;
+      const obj = await this.d.storage.put(key, vid.data, vid.contentType);
+
+      const asset: Asset = {
+        id: randomUUID(),
+        sceneId: scene.id,
+        kind: "video",
+        storageUrl: obj.url,
+        providerId: this.d.videoProvider.id,
+        contentHash: videoHash,
+        cost: vid.cost,
+        status: "ready",
+        meta: { contentType: vid.contentType, durationSec },
+      };
+      // 既存の動画アセットは置き換え、画像アセットは残す（静止画フォールバック用）。
+      scene.assets = [...scene.assets.filter((a) => a.kind !== "video"), asset];
+      scene.status = "video_ready";
+
+      stored.costSpentUSD += vid.cost;
+      if (stored.costSpentUSD >= stored.capUSD) stored.capReached = true;
+      await this.d.repo.save(stored);
+    } catch (err) {
+      // 動画生成失敗 → 静止画へフォールバック（§7.10 / Phase 2 DoD）。
+      scene.status = "image_ready";
+      await this.d.repo.save(stored);
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+}
+
+function readyImage(scene: Scene): Asset | undefined {
+  return scene.assets.find((a) => a.kind === "image" && a.status === "ready");
+}
+
+function clampDuration(chars: number): number {
+  return Math.max(2, Math.min(6, Math.round((2 + chars / 120) * 10) / 10));
+}
+
+function extForVideo(contentType: string): string {
+  if (contentType.includes("svg")) return "svg";
+  if (contentType.includes("webm")) return "webm";
+  return "mp4";
 }
 
 function segmentToScene(s: SegmentedScene, workId: string): Scene {

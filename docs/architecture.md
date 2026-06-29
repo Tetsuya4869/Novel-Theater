@@ -17,8 +17,10 @@ packages/
     segment/           シーン分割（Claude / ヒューリスティック）+ 全文チャンク分割
     prompt/            画像プロンプト構築（Claude / テンプレート）
     image/             ImageProvider（dummy / fal アダプタ）
+    video/             VideoProvider（dummy=アニメSVG / fal i2v アダプタ; Phase 2）
+    highlights.ts      ハイライト選択 / videoLevel→本数 / 再生タイムライン生成（Phase 2）
     pipeline.ts        テキスト→シーン→プロンプト→コマ絵→保存（同期; spike 用）
-    service.ts         GenerationService（plan/先読み/再生成/コスト上限; Phase 1 中核）
+    service.ts         GenerationService（plan/先読み/再生成/動画化/コスト上限）
     factory.ts         env から依存一式を組み立てる
 scripts/
   spike.ts             Phase 0 検証 CLI（UI より先に三大リスクを可視化）
@@ -52,6 +54,21 @@ POST /api/generate
   によるアセット再利用、シーン個別リトライ、入力長上限（`NT_MAX_INPUT_CHARS`）。
 - **体感速度**: プログレッシブ表示（captioned→生成中→ready）＋先読み＋擬似アニメ
   （Ken Burns、`prefers-reduced-motion` 尊重）。TTFM を北極星指標に置く（§11.1）。
+
+## Phase 2（動かす / 動画化）の追加点
+
+- **VideoProvider（image-to-video）**: コマ絵起点で 2〜6 秒の短尺を生成（§7.6）。既定は
+  `DummyVideoProvider`（アニメーション SVG をクリップ代用に生成しオフライン検証可能）。本番は
+  `FalVideoProvider`（fal i2v、要 API キー・公開画像 URL）。`VIDEO_PROVIDER` で切替。
+- **ハイライト判定**: `video_candidate` かつ `panel_priority` の高いシーンを `videoLevel`
+  （none/highlight=2/rich=5）に応じて自動動画化。加えて「このコマを動かす」で個別トリガ
+  （`/api/works/:id/scenes/:sceneId/animate`）。全件動画化はしない（コスト）。
+- **動画ジョブ**: 画像未生成なら先に生成 → 動画化。コスト上限を強制し、**失敗時は静止画へ
+  フォールバック**（scene を image_ready に戻す）。画像アセットは動画と併存させ常に静止画で代替可能。
+- **シアター（没入）モード**: `TIMELINE_ITEM`（各シーンの表示尺）で自動進行する `ImmersivePlayer`。
+  全画面・前後送り・再生/一時停止。read（スクロール同期）↔ watch（自動再生）をユーザー設定で切替（§3.7）。
+- **既知の簡略化**: ダミー動画は SVG アニメ（本物の mp4 ではない）。fal i2v は LocalStorage の
+  相対 URL では到達できないため本番の公開 URL が前提。動画コスト単価はプロバイダ確定後に設定。
 
 ## 設計上の要点
 

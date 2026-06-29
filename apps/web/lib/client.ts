@@ -18,6 +18,7 @@ export async function requestGenerate(input: {
   text: string;
   title?: string;
   style?: string;
+  videoLevel?: "none" | "highlight" | "rich";
 }): Promise<PlanResponse> {
   const res = await fetch("/api/generate", {
     method: "POST",
@@ -47,6 +48,13 @@ export async function prefetchScenes(
 
 export async function regenerateScene(workId: string, sceneId: string): Promise<void> {
   const res = await fetch(`/api/works/${workId}/scenes/${sceneId}/regenerate`, {
+    method: "POST",
+  });
+  await asJson<{ ok: boolean }>(res);
+}
+
+export async function animateScene(workId: string, sceneId: string): Promise<void> {
+  const res = await fetch(`/api/works/${workId}/scenes/${sceneId}/animate`, {
     method: "POST",
   });
   await asJson<{ ok: boolean }>(res);

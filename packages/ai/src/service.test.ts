@@ -12,6 +12,8 @@ import type {
 import { HeuristicSegmenter } from "./segment/heuristic";
 import { TemplatePromptBuilder } from "./prompt/template";
 import { DummyImageProvider } from "./image/dummy";
+import { DummyVideoProvider } from "./video/dummy";
+import { buildTimeline, selectHighlightIndices } from "./highlights";
 import { GenerationService, type GenerationServiceDeps } from "./service";
 
 const ENV = {
@@ -39,6 +41,7 @@ function makeService(overrides: Partial<GenerationServiceDeps> = {}) {
     segmenter: new HeuristicSegmenter(),
     promptBuilder: new TemplatePromptBuilder(),
     imageProvider: new DummyImageProvider(),
+    videoProvider: new DummyVideoProvider(),
     ...overrides,
   };
   return { service: new GenerationService(deps), repo, queue, deps };
@@ -172,3 +175,106 @@ async function makeServiceQueueIdle(service: GenerationService): Promise<void> {
   const queue = (service as unknown as { d: { queue: InProcessJobQueue } }).d.queue;
   await queue.onIdle();
 }
+
+describe("動画化 (Phase 2)", () => {
+  it("animateScene でハイライトが動画化される（画像が無ければ先に生成）", async () => {
+    const { service, repo, queue } = makeService();
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    const stored0 = await repo.get(workId);
+    const sceneId = stored0!.work.scenes[1]!.id;
+
+    await service.animateScene(workId, sceneId);
+    await queue.onIdle();
+
+    const stored = await repo.get(workId);
+    const scene = stored!.work.scenes.find((s) => s.id === sceneId)!;
+    expect(scene.status).toBe("video_ready");
+    expect(scene.assets.some((a) => a.kind === "video" && a.status === "ready")).toBe(true);
+    // 静止画フォールバック用に画像アセットも残っている。
+    expect(scene.assets.some((a) => a.kind === "image")).toBe(true);
+  });
+
+  it("動画生成失敗時は静止画へフォールバックする", async () => {
+    const failingVideo = {
+      id: "failvid",
+      async animate() {
+        throw new Error("i2v 失敗");
+      },
+    };
+    const { service, repo, queue } = makeService({ videoProvider: failingVideo });
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    const sceneId = (await repo.get(workId))!.work.scenes[0]!.id;
+
+    await service.animateScene(workId, sceneId);
+    await queue.onIdle();
+
+    const scene = (await repo.get(workId))!.work.scenes.find((s) => s.id === sceneId)!;
+    expect(scene.status).toBe("image_ready"); // フォールバック
+    expect(scene.assets.some((a) => a.kind === "image" && a.status === "ready")).toBe(true);
+    expect(scene.assets.some((a) => a.kind === "video")).toBe(false);
+  });
+
+  it("videoLevel=highlight で投入時にハイライトが自動動画化される", async () => {
+    // video_candidate はヒューリスティックで本文長 > 200 のシーンに付く。長文を用意する。
+    const long = [0, 1, 2].map(() => "あ".repeat(250)).join("\n\n");
+    const { service, repo, queue } = makeService();
+    const { workId } = await service.plan(long, { prefetchCount: 0, videoLevel: "highlight" });
+    await queue.onIdle();
+    const stored = await repo.get(workId);
+    const videoReady = stored!.work.scenes.filter((s) => s.status === "video_ready").length;
+    expect(videoReady).toBeGreaterThan(0);
+    expect(videoReady).toBeLessThanOrEqual(2); // highlight 上限
+  });
+
+  it("コスト上限を超えると動画化しない", async () => {
+    const priceyVideo = {
+      id: "priceyvid",
+      async animate() {
+        return { data: new TextEncoder().encode("v"), contentType: "video/mp4", cost: 5, latencyMs: 1 };
+      },
+    };
+    const { service, repo, queue } = makeService({ videoProvider: priceyVideo });
+    const { workId } = await service.plan(TEXT, { prefetchCount: 4, costLimitUSD: 1.0 });
+    await queue.onIdle();
+    // 画像生成（dummy, $0）→ 上限未満 → 1本目の動画で $5 → 上限到達 → 以降は動画化されない。
+    const sceneIds = (await repo.get(workId))!.work.scenes.map((s) => s.id);
+    for (const id of sceneIds) await service.animateScene(workId, id);
+    await queue.onIdle();
+    const stored = await repo.get(workId);
+    const videoReady = stored!.work.scenes.filter((s) => s.status === "video_ready").length;
+    expect(stored!.capReached).toBe(true);
+    // 上限が機能し、全シーンの動画化は止まる（並列度 2 のため最大 2 本まではゲートを通過しうる）。
+    expect(videoReady).toBeLessThanOrEqual(2);
+    expect(videoReady).toBeLessThan(stored!.work.scenes.length);
+  });
+});
+
+describe("buildTimeline", () => {
+  it("startSec は累積し、duration は 3〜10 秒に収まる", async () => {
+    const { service, repo } = makeService();
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    const work = (await repo.get(workId))!.work;
+    const tl = buildTimeline(work);
+    expect(tl.length).toBe(work.scenes.length);
+    let prev = 0;
+    for (const item of tl) {
+      expect(item.startSec).toBeGreaterThanOrEqual(prev);
+      expect(item.durationSec).toBeGreaterThanOrEqual(3);
+      expect(item.durationSec).toBeLessThanOrEqual(10);
+      prev = item.startSec;
+    }
+  });
+});
+
+describe("selectHighlightIndices", () => {
+  it("video_candidate を panel_priority 降順で max 件選ぶ", () => {
+    const scenes = [
+      { orderIndex: 0, panelPriority: 1, videoCandidate: false },
+      { orderIndex: 1, panelPriority: 5, videoCandidate: true },
+      { orderIndex: 2, panelPriority: 3, videoCandidate: true },
+      { orderIndex: 3, panelPriority: 4, videoCandidate: true },
+    ];
+    expect(selectHighlightIndices(scenes, 2)).toEqual([1, 3]);
+    expect(selectHighlightIndices(scenes, 0)).toEqual([]);
+  });
+});

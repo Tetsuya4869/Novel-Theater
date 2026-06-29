@@ -37,6 +37,7 @@ const EnvSchema = z.object({
     .default(MODELS.reasoning),
 
   IMAGE_PROVIDER: z.enum(["dummy", "fal", "replicate"]).default("dummy"),
+  VIDEO_PROVIDER: z.enum(["dummy", "fal"]).default("dummy"),
   FAL_KEY: z.string().min(1).optional(),
   REPLICATE_API_TOKEN: z.string().min(1).optional(),
 

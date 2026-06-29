@@ -15,6 +15,12 @@ export { ClaudePromptBuilder } from "./prompt/claude";
 // 画像生成
 export { DummyImageProvider, FalImageProvider, createImageProvider } from "./image";
 
+// 動画生成（Phase 2）
+export { DummyVideoProvider, FalVideoProvider, createVideoProvider } from "./video";
+
+// ハイライト選択 / タイムライン（Phase 2）
+export { selectHighlightIndices, maxVideosForLevel, buildTimeline } from "./highlights";
+
 // コスト
 export { computeLLMCostUSD, type TokenUsage } from "./cost";
 

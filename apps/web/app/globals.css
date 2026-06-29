@@ -105,6 +105,13 @@ select {
 .toc__cell--placeholder {
   background: #6b5a3a;
 }
+.toc__cell--video_ready {
+  background: #3a86a8;
+}
+.toc__cell--video_generating {
+  background: #5aa6c9;
+  animation: pulse 1.2s ease-in-out infinite;
+}
 .toc__cell[data-active="true"] {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -194,7 +201,8 @@ input[type="text"] {
   overflow: hidden;
 }
 
-.stage img {
+.stage img,
+.visual {
   width: 100%;
   display: block;
 }
@@ -215,6 +223,59 @@ input[type="text"] {
   color: var(--muted);
   text-align: center;
   padding: 1rem;
+}
+
+/* モード切替バー */
+.modebar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+/* シアター（没入）モード */
+.player {
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.player:fullscreen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: 0;
+}
+
+.player__stage {
+  position: relative;
+  background: #000;
+}
+
+.player__stage .visual {
+  max-height: 70vh;
+  width: 100%;
+  object-fit: contain;
+}
+
+.player__caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 1.5rem 1.25rem 1rem;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+  color: #fff;
+  font-size: 1.05rem;
+}
+
+.player__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  flex-wrap: wrap;
+  background: var(--panel);
 }
 
 @media (max-width: 720px) {

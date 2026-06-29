@@ -4,7 +4,12 @@ import { getService, maxInputChars } from "@/lib/services";
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  let body: { text?: string; title?: string; style?: string };
+  let body: {
+    text?: string;
+    title?: string;
+    style?: string;
+    videoLevel?: "none" | "highlight" | "rich";
+  };
   try {
     body = await req.json();
   } catch {
@@ -24,6 +29,7 @@ export async function POST(req: Request) {
     const result = await getService().plan(text, {
       title: body.title,
       style: body.style,
+      videoLevel: body.videoLevel,
       prefetchCount: 4,
     });
     return NextResponse.json(result);

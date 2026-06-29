@@ -3,7 +3,12 @@ import { loadEnv } from "@novel-theater/config";
 import { FileWorkRepository } from "@novel-theater/db";
 import { InProcessJobQueue } from "@novel-theater/queue";
 import { LocalStorage } from "@novel-theater/storage";
-import { GenerationService, createAiCapabilities, createImageProvider } from "@novel-theater/ai";
+import {
+  GenerationService,
+  createAiCapabilities,
+  createImageProvider,
+  createVideoProvider,
+} from "@novel-theater/ai";
 
 /**
  * サーバー側シングルトン（API キーはクライアントへ渡さない §3.5）。
@@ -31,6 +36,7 @@ function build(): GenerationService {
     segmenter: caps.segmenter,
     promptBuilder: caps.promptBuilder,
     imageProvider: createImageProvider(env),
+    videoProvider: createVideoProvider(env),
   });
 }
 

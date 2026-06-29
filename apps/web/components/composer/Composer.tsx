@@ -19,10 +19,17 @@ const SAMPLE = `ある日の暮方の事である。一人の下人が、羅生�
 
 下人は七段ある石段の一番上の段に、洗いざらした紺の襖の尻を据えて、ぼんやり、雨のふるのを眺めていた。`;
 
+const VIDEO_LEVELS: Array<{ id: "none" | "highlight" | "rich"; label: string }> = [
+  { id: "none", label: "静止画のみ" },
+  { id: "highlight", label: "ハイライトのみ動画" },
+  { id: "rich", label: "多めに動画" },
+];
+
 export function Composer() {
   const router = useRouter();
   const [text, setText] = useState("");
   const [styleId, setStyleId] = useState(STYLE_PRESETS[0]!.id);
+  const [videoLevel, setVideoLevel] = useState<"none" | "highlight" | "rich">("none");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +38,12 @@ export function Composer() {
     setLoading(true);
     try {
       const preset = STYLE_PRESETS.find((p) => p.id === styleId) ?? STYLE_PRESETS[0]!;
-      const { workId } = await requestGenerate({ text, style: preset.prompt, title: "投入テキスト" });
+      const { workId } = await requestGenerate({
+        text,
+        style: preset.prompt,
+        videoLevel,
+        title: "投入テキスト",
+      });
       router.push(`/theater/${workId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成に失敗しました");
@@ -61,20 +73,37 @@ export function Composer() {
         </button>
       </div>
 
-      <label style={{ display: "block", margin: "0.5rem 0" }}>
-        <span className="muted">アートスタイル</span>
-        <select
-          value={styleId}
-          onChange={(e) => setStyleId(e.target.value)}
-          style={{ display: "block", marginTop: "0.4rem" }}
-        >
-          {STYLE_PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", margin: "0.5rem 0" }}>
+        <label>
+          <span className="muted">アートスタイル</span>
+          <select
+            value={styleId}
+            onChange={(e) => setStyleId(e.target.value)}
+            style={{ display: "block", marginTop: "0.4rem" }}
+          >
+            {STYLE_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          <span className="muted">動画化</span>
+          <select
+            value={videoLevel}
+            onChange={(e) => setVideoLevel(e.target.value as "none" | "highlight" | "rich")}
+            style={{ display: "block", marginTop: "0.4rem" }}
+          >
+            {VIDEO_LEVELS.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {error && (
         <p className="error" style={{ marginTop: "1rem" }}>
