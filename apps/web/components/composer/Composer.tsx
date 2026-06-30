@@ -30,6 +30,7 @@ export function Composer() {
   const [text, setText] = useState("");
   const [styleId, setStyleId] = useState(STYLE_PRESETS[0]!.id);
   const [videoLevel, setVideoLevel] = useState<"none" | "highlight" | "rich">("none");
+  const [narration, setNarration] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +43,7 @@ export function Composer() {
         text,
         style: preset.prompt,
         videoLevel,
+        narration,
         title: "投入テキスト",
       });
       router.push(`/theater/${workId}`);
@@ -102,6 +104,16 @@ export function Composer() {
               </option>
             ))}
           </select>
+        </label>
+
+        <label style={{ alignSelf: "end" }}>
+          <input
+            type="checkbox"
+            checked={narration}
+            onChange={(e) => setNarration(e.target.checked)}
+            style={{ marginRight: "0.4rem" }}
+          />
+          ナレーション音声
         </label>
       </div>
 

@@ -32,16 +32,27 @@ export function maxVideosForLevel(level: Work["settings"]["videoLevel"]): number
 }
 
 /**
- * 再生タイムラインを組む（§8）。各シーンの表示尺は本文量に応じて 3〜10 秒。
- * シアターモードの自動進行に使用する。
+ * 再生タイムラインを組む（§8）。表示尺はナレーション音声があればその尺、無ければ本文量（3〜10 秒）。
+ * audioAssetUrl をセットしてコマ／本文／音声の同期再生に使う（§7.7）。
  */
 export function buildTimeline(work: Work): TimelineItem[] {
   let t = 0;
   const items: TimelineItem[] = [];
   for (const s of work.scenes) {
+    const audio = s.assets.find((a) => a.kind === "audio" && a.status === "ready");
+    const audioDur =
+      audio && typeof (audio.meta as { durationSec?: number }).durationSec === "number"
+        ? (audio.meta as { durationSec: number }).durationSec
+        : undefined;
     const chars = s.sourceEnd - s.sourceStart;
-    const dur = Math.round(clamp(3 + chars / 40, 3, 10) * 10) / 10;
-    items.push({ sceneId: s.id, orderIndex: s.orderIndex, startSec: Math.round(t * 10) / 10, durationSec: dur });
+    const dur = audioDur ?? Math.round(clamp(3 + chars / 40, 3, 10) * 10) / 10;
+    items.push({
+      sceneId: s.id,
+      orderIndex: s.orderIndex,
+      startSec: Math.round(t * 10) / 10,
+      durationSec: Math.round(dur * 10) / 10,
+      audioAssetUrl: audio?.storageUrl,
+    });
     t += dur;
   }
   return items;

@@ -19,6 +19,7 @@ export async function requestGenerate(input: {
   title?: string;
   style?: string;
   videoLevel?: "none" | "highlight" | "rich";
+  narration?: boolean;
 }): Promise<PlanResponse> {
   const res = await fetch("/api/generate", {
     method: "POST",
@@ -56,6 +57,39 @@ export async function regenerateScene(workId: string, sceneId: string): Promise<
 export async function animateScene(workId: string, sceneId: string): Promise<void> {
   const res = await fetch(`/api/works/${workId}/scenes/${sceneId}/animate`, {
     method: "POST",
+  });
+  await asJson<{ ok: boolean }>(res);
+}
+
+export async function narrateScene(workId: string, sceneId: string): Promise<void> {
+  const res = await fetch(`/api/works/${workId}/scenes/${sceneId}/narrate`, {
+    method: "POST",
+  });
+  await asJson<{ ok: boolean }>(res);
+}
+
+export async function updateScenePrompt(
+  workId: string,
+  sceneId: string,
+  prompt: string,
+): Promise<void> {
+  const res = await fetch(`/api/works/${workId}/scenes/${sceneId}/prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  await asJson<{ ok: boolean }>(res);
+}
+
+export async function updateCharacter(
+  workId: string,
+  characterId: string,
+  patch: { name?: string; appearance?: string; visualTags?: string[] },
+): Promise<void> {
+  const res = await fetch(`/api/works/${workId}/characters/${characterId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
   });
   await asJson<{ ok: boolean }>(res);
 }

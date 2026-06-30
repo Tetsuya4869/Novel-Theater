@@ -18,9 +18,14 @@ packages/
     prompt/            画像プロンプト構築（Claude / テンプレート）
     image/             ImageProvider（dummy / fal アダプタ）
     video/             VideoProvider（dummy=アニメSVG / fal i2v アダプタ; Phase 2）
-    highlights.ts      ハイライト選択 / videoLevel→本数 / 再生タイムライン生成（Phase 2）
+    voice/             VoiceProvider（dummy=WAV / ElevenLabs アダプタ; Phase 3）
+    bible/             Story Bible 構築（Claude / ヒューリスティック; Phase 3）
+    narration/         ナレーション台本生成（Claude / ヒューリスティック; Phase 3）
+    consistency/       整合チェック（Claude Vision / Noop; Phase 3）
+    highlights.ts      ハイライト選択 / videoLevel→本数 / 再生タイムライン生成
+    obs.ts             最小の構造化ログ（可観測性の足場; Phase 3）
     pipeline.ts        テキスト→シーン→プロンプト→コマ絵→保存（同期; spike 用）
-    service.ts         GenerationService（plan/先読み/再生成/動画化/コスト上限）
+    service.ts         GenerationService（plan/先読み/再生成/動画化/Bible/ナレーション/編集/コスト上限）
     factory.ts         env から依存一式を組み立てる
 scripts/
   spike.ts             Phase 0 検証 CLI（UI より先に三大リスクを可視化）
@@ -69,6 +74,26 @@ POST /api/generate
   全画面・前後送り・再生/一時停止。read（スクロール同期）↔ watch（自動再生）をユーザー設定で切替（§3.7）。
 - **既知の簡略化**: ダミー動画は SVG アニメ（本物の mp4 ではない）。fal i2v は LocalStorage の
   相対 URL では到達できないため本番の公開 URL が前提。動画コスト単価はプロバイダ確定後に設定。
+
+## Phase 3（一貫させる & 語らせる）の追加点
+
+- **Story Bible（一貫性エンジン §7.4）**: 本文からキャラ（外見・視覚タグ）と画風を抽出
+  （`ClaudeBibleBuilder`、オフラインは `HeuristicBibleBuilder`）。各キャラの参照画像を 1 枚生成して
+  `referenceImageUrl` に保存し、以降のシーン生成へ注入（一貫性レベル2）。キャラ設定エディタで編集→
+  参照画像を再生成できる。
+- **Claude Vision 整合チェック（§7.8）**: 生成画像をモデルに渡し、シーン記述・キャラ・画風と整合するか
+  判定。NG ならプロンプト修正案で再生成（リトライ上限 2、新キャラ初登場/重要シーンを優先検証）。
+  オフラインは `NoopConsistencyChecker`。LLM ラッパは画像入力（Vision）に対応。
+- **ナレーション（§7.7）**: 台本生成（`ClaudeNarrationWriter`/ヒューリスティック）＋ TTS
+  （`DummyVoiceProvider`=WAV / `ElevenLabsVoiceProvider`）。音声アセットを付与し、`TIMELINE_ITEM`
+  の `audioAssetUrl`・尺に反映。シアターモードは音声終了でコマを進める（コマ／本文／音声の同期）。
+- **編集（DoD: 任意パネルを修正・再生成）**: 画像プロンプト手動編集（`promptLocked` で再構築をスキップ）、
+  キャラ設定編集、シーン個別の再生成/再動画化/ナレーション生成。
+- **モデルルーティング（§7.11）**: 難所=Opus（Bible）、量産=Sonnet（ナレーション/整合判定）。
+- **可観測性（§11.5）**: `obs.ts` の最小構造化ログ（trace）。本番は OpenTelemetry/Sentry へ。
+- **既知の簡略化**: オフラインのヒューリスティック分割は登場人物名を持たないため、Story Bible の
+  キャラ抽出は実質 Claude 経路で機能する。ダミー音声はサイン波 WAV（本物の TTS ではない）。
+  Vision 整合チェックはダミー画像（SVG）では実効しないため API キー設定時に有効。
 
 ## 設計上の要点
 

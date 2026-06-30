@@ -23,12 +23,24 @@ export class ClaudeLLM implements LLMClient {
     const model = params.model ?? this.model;
     const started = Date.now();
 
+    // Vision: 画像があればユーザーメッセージを content ブロック配列で組む。
+    const userContent =
+      params.images && params.images.length > 0
+        ? [
+            ...params.images.map((img) => ({
+              type: "image",
+              source: { type: "base64", media_type: img.mediaType, data: img.data },
+            })),
+            { type: "text", text: params.user },
+          ]
+        : params.user;
+
     // SDK のバージョン差を吸収するため request はゆるく組む。
     const request: Record<string, unknown> = {
       model,
       max_tokens: params.maxTokens ?? 8_000,
       thinking: { type: "adaptive" },
-      messages: [{ role: "user", content: params.user }],
+      messages: [{ role: "user", content: userContent }],
     };
     if (params.system) {
       request.system = [

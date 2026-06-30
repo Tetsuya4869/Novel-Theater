@@ -8,6 +8,7 @@ import {
   createAiCapabilities,
   createImageProvider,
   createVideoProvider,
+  createVoiceProvider,
 } from "@novel-theater/ai";
 
 /**
@@ -37,6 +38,10 @@ function build(): GenerationService {
     promptBuilder: caps.promptBuilder,
     imageProvider: createImageProvider(env),
     videoProvider: createVideoProvider(env),
+    bibleBuilder: caps.bibleBuilder,
+    narrationWriter: caps.narrationWriter,
+    consistencyChecker: caps.consistencyChecker,
+    voiceProvider: createVoiceProvider(env),
   });
 }
 

@@ -1,11 +1,20 @@
 import type { ModelId } from "@novel-theater/config";
 import type { TokenUsage } from "../cost";
 
+export interface LLMImageInput {
+  /** base64 エンコードした画像データ。 */
+  data: string;
+  /** 例: "image/png", "image/jpeg"。 */
+  mediaType: string;
+}
+
 export interface LLMCompleteParams {
   /** 安定プレフィックスとしてキャッシュされるシステムプロンプト。 */
   system?: string;
   /** ユーザーメッセージ本文。 */
   user: string;
+  /** Vision: ユーザーメッセージに添付する画像（§7.8 整合チェック）。 */
+  images?: LLMImageInput[];
   /** 構造化出力の JSON Schema（指定時は output_config.format に渡す）。 */
   schema?: Record<string, unknown>;
   model?: ModelId;

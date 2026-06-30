@@ -13,6 +13,10 @@ import { HeuristicSegmenter } from "./segment/heuristic";
 import { TemplatePromptBuilder } from "./prompt/template";
 import { DummyImageProvider } from "./image/dummy";
 import { DummyVideoProvider } from "./video/dummy";
+import { DummyVoiceProvider } from "./voice";
+import { HeuristicBibleBuilder, type BibleBuilder } from "./bible";
+import { HeuristicNarrationWriter } from "./narration";
+import { NoopConsistencyChecker, type ConsistencyChecker } from "./consistency";
 import { buildTimeline, selectHighlightIndices } from "./highlights";
 import { GenerationService, type GenerationServiceDeps } from "./service";
 
@@ -42,6 +46,10 @@ function makeService(overrides: Partial<GenerationServiceDeps> = {}) {
     promptBuilder: new TemplatePromptBuilder(),
     imageProvider: new DummyImageProvider(),
     videoProvider: new DummyVideoProvider(),
+    bibleBuilder: new HeuristicBibleBuilder(),
+    narrationWriter: new HeuristicNarrationWriter(),
+    consistencyChecker: new NoopConsistencyChecker(),
+    voiceProvider: new DummyVoiceProvider(),
     ...overrides,
   };
   return { service: new GenerationService(deps), repo, queue, deps };
@@ -276,5 +284,105 @@ describe("selectHighlightIndices", () => {
     ];
     expect(selectHighlightIndices(scenes, 2)).toEqual([1, 3]);
     expect(selectHighlightIndices(scenes, 0)).toEqual([]);
+  });
+});
+
+// Phase 3 ---------------------------------------------------------------------
+
+// 登場キャラを返すスタブ Bible ビルダー（参照画像注入の検証用）。
+const bibleWithCharacters: BibleBuilder = {
+  id: "stub",
+  async build() {
+    return {
+      artStyle: { name: "manga", description: "manga ink" },
+      worldSetting: {},
+      characters: [{ name: "カイ", appearance: { description: "黒髪・長身" }, visualTags: ["black hair"] }],
+    };
+  },
+};
+
+describe("Story Bible / 一貫性 (Phase 3)", () => {
+  it("buildBible がキャラの参照画像を生成し referenceImageUrl を設定する", async () => {
+    const { service, repo } = makeService({ bibleBuilder: bibleWithCharacters });
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0, buildBible: true });
+    const stored = await repo.get(workId);
+    expect(stored!.bible).toBeDefined();
+    expect(stored!.bible!.characters.length).toBe(1);
+    expect(stored!.bible!.characters[0]!.referenceImageUrl).toMatch(/\/bible\//);
+  });
+
+  it("updateCharacter で設定編集＆参照画像を再生成できる", async () => {
+    const { service, repo } = makeService({ bibleBuilder: bibleWithCharacters });
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    const charId = (await repo.get(workId))!.bible!.characters[0]!.id;
+    const ok = await service.updateCharacter(workId, charId, { visualTags: ["white hair"] });
+    expect(ok).toBe(true);
+    const ch = (await repo.get(workId))!.bible!.characters[0]!;
+    expect(ch.visualTags).toEqual(["white hair"]);
+    expect(ch.referenceImageUrl).toMatch(/\/bible\//);
+  });
+
+  it("整合チェック NG は再生成され、最終的に整合する（リトライ上限内）", async () => {
+    let checks = 0;
+    const checker: ConsistencyChecker = {
+      id: "stub-vision",
+      async check() {
+        checks++;
+        // 1 回目 NG（プロンプト修正案つき）、2 回目 OK。
+        return checks === 1
+          ? { consistent: false, suggestedPrompt: "fixed prompt", costUSD: 0 }
+          : { consistent: true, costUSD: 0 };
+      },
+    };
+    // panel_priority>=4 を得るため長文（>=480字）の 1 段落を使う。
+    const long = "あ".repeat(520);
+    const { service, repo } = makeService({ consistencyChecker: checker });
+    const { workId } = await service.plan(long, { prefetchCount: 0 });
+    await service.processPending(workId);
+    expect(checks).toBe(2); // 2 回チェック = 1 回再生成
+    const scene = (await repo.get(workId))!.work.scenes[0]!;
+    expect(scene.status).toBe("image_ready");
+  });
+});
+
+describe("ナレーション (Phase 3)", () => {
+  it("narrateScene が音声アセットを生成し、タイムラインに audioAssetUrl が載る", async () => {
+    const { service, repo, queue } = makeService();
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    const sceneId = (await repo.get(workId))!.work.scenes[0]!.id;
+    await service.narrateScene(workId, sceneId);
+    await queue.onIdle();
+    const stored = await repo.get(workId);
+    const scene = stored!.work.scenes.find((s) => s.id === sceneId)!;
+    const audio = scene.assets.find((a) => a.kind === "audio");
+    expect(audio?.storageUrl).toMatch(/-audio\.wav$/);
+
+    const tl = buildTimeline(stored!.work);
+    expect(tl[0]!.audioAssetUrl).toBe(audio!.storageUrl);
+    expect(tl[0]!.durationSec).toBeGreaterThan(0);
+  });
+
+  it("plan(narration:true) で先読み範囲のナレーションが生成される", async () => {
+    const { service, repo, queue } = makeService();
+    const { workId } = await service.plan(TEXT, { prefetchCount: 2, narration: true });
+    await queue.onIdle();
+    const stored = await repo.get(workId);
+    const withAudio = stored!.work.scenes.filter((s) => s.assets.some((a) => a.kind === "audio")).length;
+    expect(withAudio).toBeGreaterThan(0);
+  });
+});
+
+describe("プロンプト手動編集 (Phase 3)", () => {
+  it("updateScenePrompt でロックし、再生成時に手動プロンプトが使われる", async () => {
+    const { service, repo, queue } = makeService();
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    const scene0 = (await repo.get(workId))!.work.scenes[0]!;
+    await service.updateScenePrompt(workId, scene0.id, "MANUAL PROMPT XYZ");
+    await service.regenerate(workId, scene0.id);
+    await queue.onIdle();
+    const after = (await repo.get(workId))!.work.scenes[0]!;
+    expect(after.promptLocked).toBe(true);
+    expect(after.imagePrompt).toBe("MANUAL PROMPT XYZ");
+    expect(after.status).toBe("image_ready");
   });
 });

@@ -63,6 +63,8 @@ export interface Scene {
   seed?: number;
   status: SceneStatus;
   assets: Asset[];
+  /** ユーザーが imagePrompt を手動編集した場合 true。再生成時はプロンプト再構築をスキップする。 */
+  promptLocked?: boolean;
 }
 
 export type Visibility = "private" | "unlisted" | "public";
@@ -215,5 +217,5 @@ export interface VoiceProvider {
     text: string;
     voiceId: string;
     lang: string;
-  }): Promise<{ data: Uint8Array; contentType: string; cost: number }>;
+  }): Promise<{ data: Uint8Array; contentType: string; cost: number; durationSec: number }>;
 }

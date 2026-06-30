@@ -2,9 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WorkView } from "@/lib/view";
-import { animateScene, fetchWork, prefetchScenes, regenerateScene } from "@/lib/client";
+import {
+  animateScene,
+  fetchWork,
+  narrateScene,
+  prefetchScenes,
+  regenerateScene,
+  updateCharacter,
+  updateScenePrompt,
+} from "@/lib/client";
 import { Stage } from "@/components/stage/Stage";
 import { ImmersivePlayer } from "@/components/stage/ImmersivePlayer";
+import { CharacterEditor } from "@/components/composer/CharacterEditor";
 
 const POLL_MS = 2000;
 const MAX_TICKS = 150;
@@ -103,6 +112,43 @@ export function Reader({ initial }: { initial: WorkView }) {
     [work.id, refresh],
   );
 
+  const onNarrate = useCallback(
+    async (sceneId: string) => {
+      try {
+        await narrateScene(work.id, sceneId);
+        setTimeout(refresh, 300);
+      } catch {
+        /* noop */
+      }
+    },
+    [work.id, refresh],
+  );
+
+  const onSavePrompt = useCallback(
+    async (sceneId: string, prompt: string) => {
+      try {
+        await updateScenePrompt(work.id, sceneId, prompt);
+        await regenerateScene(work.id, sceneId);
+        setTimeout(refresh, 300);
+      } catch {
+        /* noop */
+      }
+    },
+    [work.id, refresh],
+  );
+
+  const onUpdateCharacter = useCallback(
+    async (characterId: string, patch: { appearance?: string; visualTags?: string[] }) => {
+      try {
+        await updateCharacter(work.id, characterId, patch);
+        setTimeout(refresh, 300);
+      } catch {
+        /* noop */
+      }
+    },
+    [work.id, refresh],
+  );
+
   const scrollTo = (i: number) => refs.current[i]?.scrollIntoView({ behavior: "smooth", block: "center" });
 
   const s = view.status;
@@ -152,6 +198,10 @@ export function Reader({ initial }: { initial: WorkView }) {
         </p>
       )}
 
+      {view.bible && view.bible.characters.length > 0 && (
+        <CharacterEditor bible={view.bible} onSave={onUpdateCharacter} />
+      )}
+
       {mode === "watch" ? (
         <ImmersivePlayer view={view} onAnimate={onAnimate} />
       ) : (
@@ -175,7 +225,13 @@ export function Reader({ initial }: { initial: WorkView }) {
               </div>
             ))}
           </div>
-          <Stage scene={work.scenes[active] ?? null} onRegenerate={onRegenerate} onAnimate={onAnimate} />
+          <Stage
+            scene={work.scenes[active] ?? null}
+            onRegenerate={onRegenerate}
+            onAnimate={onAnimate}
+            onNarrate={onNarrate}
+            onSavePrompt={onSavePrompt}
+          />
         </div>
       )}
     </div>

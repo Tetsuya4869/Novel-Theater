@@ -1,10 +1,11 @@
 import type { StoredWork } from "@novel-theater/db";
 import { buildTimeline } from "@novel-theater/ai";
-import type { TimelineItem, Work } from "@novel-theater/types";
+import type { StoryBible, TimelineItem, Work } from "@novel-theater/types";
 
 export interface WorkView {
   work: Work;
   timeline: TimelineItem[];
+  bible?: StoryBible;
   status: {
     total: number;
     ready: number;
@@ -25,6 +26,7 @@ export function toWorkView(stored: StoredWork): WorkView {
   return {
     work: stored.work,
     timeline: buildTimeline(stored.work),
+    bible: stored.bible,
     status: {
       total: scenes.length,
       ready: count((s) => s.status === "image_ready" || s.status === "video_ready"),

@@ -38,8 +38,15 @@ const EnvSchema = z.object({
 
   IMAGE_PROVIDER: z.enum(["dummy", "fal", "replicate"]).default("dummy"),
   VIDEO_PROVIDER: z.enum(["dummy", "fal"]).default("dummy"),
+  TTS_PROVIDER: z.enum(["dummy", "elevenlabs"]).default("dummy"),
   FAL_KEY: z.string().min(1).optional(),
   REPLICATE_API_TOKEN: z.string().min(1).optional(),
+  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  /** Claude Vision による整合チェックを有効化（API キーがある場合のみ実効）。 */
+  NT_CONSISTENCY_CHECK: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === "true" || v === "1")
+    .default(true),
 
   NT_MAX_INPUT_CHARS: z.coerce.number().int().positive().default(20_000),
   NT_COST_LIMIT_USD: z.coerce.number().positive().default(1.0),

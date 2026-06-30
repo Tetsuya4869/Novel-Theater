@@ -5,18 +5,26 @@ import type { StoredWork, WorkRepository } from "@novel-theater/db";
 import type { JobQueue } from "@novel-theater/queue";
 import type { Storage } from "@novel-theater/storage";
 import type {
+  AspectRatio,
   Asset,
+  Character,
   ImageProvider,
   PromptBuilder,
   Scene,
   SceneSegmenter,
   SegmentedScene,
+  StoryBible,
   VideoProvider,
+  VoiceProvider,
   Work,
   WorkSettings,
 } from "@novel-theater/types";
 import { segmentFullText } from "./segment/fulltext";
 import { maxVideosForLevel, selectHighlightIndices } from "./highlights";
+import type { BibleBuilder } from "./bible";
+import type { NarrationWriter } from "./narration";
+import type { ConsistencyChecker, ConsistencyCharacter } from "./consistency";
+import { trace } from "./obs";
 
 /** アートスタイルのプリセット（§3.2 投入画面）。 */
 export const STYLE_PRESETS: ReadonlyArray<{ id: string; label: string; prompt: string }> = [
@@ -35,6 +43,10 @@ export interface GenerationServiceDeps {
   promptBuilder: PromptBuilder;
   imageProvider: ImageProvider;
   videoProvider: VideoProvider;
+  voiceProvider: VoiceProvider;
+  bibleBuilder: BibleBuilder;
+  narrationWriter: NarrationWriter;
+  consistencyChecker: ConsistencyChecker;
 }
 
 export interface PlanOptions {
@@ -46,7 +58,13 @@ export interface PlanOptions {
   costLimitUSD?: number;
   /** "none" | "highlight" | "rich"（動画化レベル §7.6）。 */
   videoLevel?: Work["settings"]["videoLevel"];
+  /** ナレーション音声を生成するか（§7.7）。 */
+  narration?: boolean;
+  /** Story Bible を構築するか（§7.4）。既定 true。 */
+  buildBible?: boolean;
 }
+
+const MAX_CONSISTENCY_ATTEMPTS = 2;
 
 export interface PlanResult {
   workId: string;
@@ -75,7 +93,7 @@ export class GenerationService {
       style: opts.style ?? DEFAULT_STYLE,
       panelDensity: "medium",
       videoLevel: opts.videoLevel ?? "none",
-      narration: false,
+      narration: opts.narration ?? false,
     };
     const hash = contentHash([normalized, JSON.stringify(settings), "v1"]);
 
@@ -111,6 +129,11 @@ export class GenerationService {
     };
     await this.d.repo.save(stored);
 
+    // Story Bible（一貫性エンジン §7.4）を構築。キャラ参照画像も生成しておく。
+    if (opts.buildBible !== false) {
+      await this.buildBible(workId);
+    }
+
     const prefetch = opts.prefetchCount ?? 4;
     await this.enqueueScenes(workId, range(0, Math.min(prefetch, scenes.length)));
 
@@ -119,6 +142,11 @@ export class GenerationService {
     if (maxVideos > 0) {
       const highlights = selectHighlightIndices(scenes, maxVideos);
       await this.enqueueVideos(workId, highlights);
+    }
+
+    // ナレーション有効なら現在地周辺の音声を生成（§7.7）。
+    if (settings.narration) {
+      await this.enqueueNarration(workId, range(0, Math.min(prefetch, scenes.length)));
     }
 
     return { workId, cached: false, scenes: scenes.length };
@@ -208,6 +236,109 @@ export class GenerationService {
     return n > 0;
   }
 
+  // --- Phase 3: Story Bible / ナレーション / 編集 ---------------------------
+
+  /**
+   * Story Bible を構築し、各キャラの参照画像を生成して referenceImageUrl に保存する（§7.4）。
+   * 以降のシーン生成はこの参照を注入して一貫性を高める（レベル2）。
+   */
+  async buildBible(workId: string): Promise<StoryBible | undefined> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored) return undefined;
+
+    const built = await this.d.bibleBuilder.build(stored.work);
+    const characters: Character[] = built.characters.map((c) => ({ ...c, id: randomUUID() }));
+    const bible: StoryBible = {
+      workId,
+      artStyle: built.artStyle,
+      worldSetting: built.worldSetting,
+      characters,
+    };
+
+    // キャラの参照画像を生成（コスト上限内）。
+    for (const ch of characters) {
+      if (stored.costSpentUSD >= stored.capUSD) {
+        stored.capReached = true;
+        break;
+      }
+      await this.generateReferenceImage(stored, bible, ch);
+    }
+
+    stored.bible = bible;
+    await this.d.repo.save(stored);
+    return bible;
+  }
+
+  /** ナレーション音声ジョブを投入する（§7.7）。戻り値は投入数。 */
+  async enqueueNarration(
+    workId: string,
+    indices: number[],
+    opts: { force?: boolean } = {},
+  ): Promise<number> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored) return 0;
+    let enqueued = 0;
+    for (const i of indices) {
+      const scene = stored.work.scenes[i];
+      if (!scene) continue;
+      if (!opts.force && hasAudio(scene)) continue;
+      if (stored.capReached && !opts.force) continue;
+
+      const jobId = opts.force
+        ? `${workId}:n${i}:r${Date.now()}:${this.forceCounter++}`
+        : `${workId}:n${i}`;
+      if (!opts.force && this.d.queue.has(jobId)) continue;
+
+      this.d.queue.add({
+        id: jobId,
+        priority: 2000 + i,
+        run: () => this.runNarrationJob(workId, i),
+      });
+      enqueued++;
+    }
+    return enqueued;
+  }
+
+  /** シーンのナレーションを生成する明示トリガ。 */
+  async narrateScene(workId: string, sceneId: string): Promise<boolean> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored) return false;
+    const i = stored.work.scenes.findIndex((s) => s.id === sceneId);
+    if (i < 0) return false;
+    const n = await this.enqueueNarration(workId, [i], { force: true });
+    return n > 0;
+  }
+
+  /** キャラクター設定を編集し、参照画像を再生成する（§7.4 キャラ設定エディタ）。 */
+  async updateCharacter(
+    workId: string,
+    characterId: string,
+    patch: { name?: string; appearance?: string; visualTags?: string[] },
+  ): Promise<boolean> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored?.bible) return false;
+    const ch = stored.bible.characters.find((c) => c.id === characterId);
+    if (!ch) return false;
+    if (patch.name !== undefined) ch.name = patch.name;
+    if (patch.appearance !== undefined) ch.appearance = { description: patch.appearance };
+    if (patch.visualTags !== undefined) ch.visualTags = patch.visualTags;
+    await this.generateReferenceImage(stored, stored.bible, ch);
+    await this.d.repo.save(stored);
+    return true;
+  }
+
+  /** シーンの画像プロンプトを手動編集する（§7.4 プロンプト手動編集）。 */
+  async updateScenePrompt(workId: string, sceneId: string, prompt: string): Promise<boolean> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored) return false;
+    const scene = stored.work.scenes.find((s) => s.id === sceneId);
+    if (!scene) return false;
+    scene.imagePrompt = prompt;
+    scene.promptLocked = true;
+    await this.d.repo.save(stored);
+    return true;
+  }
+
   /** 未生成/失敗シーンを同期的に処理する（worker / バッチ / テスト用）。 */
   async processPending(workId: string, opts: { force?: boolean } = {}): Promise<void> {
     const stored = await this.d.repo.get(workId);
@@ -247,62 +378,210 @@ export class GenerationService {
       return;
     }
 
+    const startedAt = Date.now();
     scene.status = "image_generating";
     await this.d.repo.save(stored);
 
     try {
-      const segment = sceneToSegmented(scene);
-      const built = await this.d.promptBuilder.build(segment, stored.work.settings.style);
-      scene.imagePrompt = built.prompt;
-      scene.negativePrompt = built.negativePrompt;
-
-      const seed = force
-        ? (seedFromHash(stored.work.contentHash, index) + this.forceCounter++ * 101 + Date.now()) %
-          2_147_483_647
-        : seedFromHash(stored.work.contentHash, index);
-      const promptHash = contentHash([built.prompt, seed, this.d.imageProvider.id]);
-
-      // content_hash キャッシュ: 同一プロンプト＝同一画像は再利用（§8.3）。
-      const reuse = findAssetByHash(stored.work, promptHash, scene.id);
-      if (reuse) {
-        scene.assets = [{ ...reuse, id: randomUUID(), sceneId: scene.id, cost: 0 }];
-        scene.seed = seed;
-        scene.status = "image_ready";
-        await this.d.repo.save(stored);
-        return;
+      // 手動編集済みプロンプトはそのまま使う（§7.4 プロンプト手動編集）。
+      let prompt: string;
+      let negative: string | undefined;
+      let aspect: AspectRatio = "4:3";
+      if (scene.promptLocked && scene.imagePrompt) {
+        prompt = scene.imagePrompt;
+        negative = scene.negativePrompt;
+      } else {
+        const built = await this.d.promptBuilder.build(
+          sceneToSegmented(scene),
+          stored.work.settings.style,
+          stored.bible,
+        );
+        prompt = built.prompt;
+        negative = built.negativePrompt;
+        aspect = built.aspectRatio;
+        scene.imagePrompt = prompt;
+        scene.negativePrompt = negative;
       }
 
-      const img = await this.d.imageProvider.generate({
-        prompt: built.prompt,
-        negativePrompt: built.negativePrompt,
-        aspectRatio: built.aspectRatio,
-        seed,
-      });
-      const key = `${workId}/${scene.id}-${img.seed}.${extFor(img.contentType)}`;
-      const obj = await this.d.storage.put(key, img.data, img.contentType);
+      // 一貫性レベル2: 登場キャラの参照画像を注入（§7.4）。
+      const referenceImages = referenceImagesForScene(scene, stored.bible);
+      const shouldCheck =
+        this.d.consistencyChecker.id !== "noop" &&
+        (scene.panelPriority >= 4 || isFirstAppearance(stored.work, index));
 
-      const asset: Asset = {
-        id: randomUUID(),
-        sceneId: scene.id,
-        kind: "image",
-        storageUrl: obj.url,
-        providerId: this.d.imageProvider.id,
-        contentHash: promptHash,
-        cost: img.cost,
-        status: "ready",
-        meta: { contentType: img.contentType, seed: img.seed, aspectRatio: built.aspectRatio },
-      };
-      scene.assets = [asset];
-      scene.seed = img.seed;
-      scene.status = "image_ready";
+      const maxAttempts = shouldCheck ? MAX_CONSISTENCY_ATTEMPTS : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (stored.costSpentUSD >= stored.capUSD) {
+          stored.capReached = true;
+          break;
+        }
+        const seed =
+          force || attempt > 0
+            ? (seedFromHash(stored.work.contentHash, index) +
+                this.forceCounter++ * 101 +
+                attempt * 7 +
+                Date.now()) %
+              2_147_483_647
+            : seedFromHash(stored.work.contentHash, index);
+        const promptHash = contentHash([prompt, seed, this.d.imageProvider.id, referenceImages.join(",")]);
 
-      stored.costSpentUSD += img.cost;
-      if (stored.costSpentUSD >= stored.capUSD) stored.capReached = true;
-      await this.d.repo.save(stored);
+        // content_hash キャッシュ: 同一プロンプト＝同一画像は再利用（§8.3）。初回のみ。
+        if (attempt === 0 && !force) {
+          const reuse = findAssetByHash(stored.work, promptHash, scene.id);
+          if (reuse) {
+            scene.assets = mergeAssets(scene, { ...reuse, id: randomUUID(), sceneId: scene.id, cost: 0 });
+            scene.seed = seed;
+            scene.status = "image_ready";
+            await this.d.repo.save(stored);
+            trace("scene.image.reuse", { workId, sceneId: scene.id, ms: Date.now() - startedAt });
+            return;
+          }
+        }
+
+        const img = await this.d.imageProvider.generate({
+          prompt,
+          negativePrompt: negative,
+          aspectRatio: aspect,
+          seed,
+          referenceImages,
+        });
+        const key = `${workId}/${scene.id}-${img.seed}.${extFor(img.contentType)}`;
+        const obj = await this.d.storage.put(key, img.data, img.contentType);
+
+        const asset: Asset = {
+          id: randomUUID(),
+          sceneId: scene.id,
+          kind: "image",
+          storageUrl: obj.url,
+          providerId: this.d.imageProvider.id,
+          contentHash: promptHash,
+          cost: img.cost,
+          status: "ready",
+          meta: { contentType: img.contentType, seed: img.seed, aspectRatio: aspect },
+        };
+        scene.assets = mergeAssets(scene, asset);
+        scene.seed = img.seed;
+        scene.status = "image_ready";
+        stored.costSpentUSD += img.cost;
+        if (stored.costSpentUSD >= stored.capUSD) stored.capReached = true;
+        await this.d.repo.save(stored);
+
+        if (!shouldCheck) break;
+
+        // Claude Vision 整合チェック（§7.8）。NG かつ残り試行があればプロンプトを修正して再生成。
+        const result = await this.d.consistencyChecker.check({
+          imageData: toBase64(img.data),
+          mediaType: img.contentType,
+          sceneSummary: scene.summary,
+          style: stored.work.settings.style,
+          characters: consistencyCharacters(scene, stored.bible),
+        });
+        stored.costSpentUSD += result.costUSD;
+        await this.d.repo.save(stored);
+
+        if (result.consistent || attempt === maxAttempts - 1) {
+          trace("scene.image.checked", {
+            workId,
+            sceneId: scene.id,
+            consistent: result.consistent,
+            attempt,
+            ms: Date.now() - startedAt,
+          });
+          break;
+        }
+        // 次の試行へ: 提案プロンプト or ネガティブ強化。
+        if (result.suggestedPrompt) prompt = result.suggestedPrompt;
+        else negative = negative ? `${negative}, inconsistent` : "inconsistent";
+      }
     } catch (err) {
       scene.status = "failed";
       await this.d.repo.save(stored);
       // ジョブとしては失敗を伝播（queue が failed として記録）。シーンは failed のまま。
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  /** キャラクターの参照画像を 1 枚生成して referenceImageUrl に保存する（§7.4）。 */
+  private async generateReferenceImage(
+    stored: StoredWork,
+    bible: StoryBible,
+    ch: Character,
+  ): Promise<void> {
+    if (stored.costSpentUSD >= stored.capUSD) {
+      stored.capReached = true;
+      return;
+    }
+    try {
+      const appearance =
+        typeof (ch.appearance as { description?: string }).description === "string"
+          ? (ch.appearance as { description?: string }).description
+          : "";
+      const prompt = [
+        bible.artStyle.description,
+        "character reference sheet",
+        ch.name,
+        appearance,
+        ch.visualTags.join(", "),
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const seed = seedFromHash(contentHash([ch.id]), 0);
+      const img = await this.d.imageProvider.generate({ prompt, aspectRatio: "2:3", seed });
+      const key = `${stored.work.id}/bible/${ch.id}.${extFor(img.contentType)}`;
+      const obj = await this.d.storage.put(key, img.data, img.contentType);
+      ch.referenceImageUrl = obj.url;
+      ch.defaultSeed = img.seed;
+      stored.costSpentUSD += img.cost;
+      if (stored.costSpentUSD >= stored.capUSD) stored.capReached = true;
+    } catch {
+      // 参照画像の生成失敗は致命ではない（レベル1 のテキスト一貫性で継続）。
+      trace("bible.reference.failed", { workId: stored.work.id });
+    }
+  }
+
+  /** 1 シーンのナレーション音声ジョブ（§7.7）。失敗は無視（音声なしで継続）。 */
+  private async runNarrationJob(workId: string, index: number): Promise<void> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored) return;
+    const scene = stored.work.scenes[index];
+    if (!scene) return;
+    if (stored.costSpentUSD >= stored.capUSD) {
+      stored.capReached = true;
+      await this.d.repo.save(stored);
+      return;
+    }
+    const sceneText = stored.work.sourceText.slice(scene.sourceStart, scene.sourceEnd);
+    try {
+      const script = await this.d.narrationWriter.write({
+        sceneText,
+        summary: scene.summary,
+        language: stored.work.language,
+      });
+      const audio = await this.d.voiceProvider.synthesize({
+        text: script.script,
+        voiceId: script.voiceId,
+        lang: stored.work.language,
+      });
+      const key = `${workId}/${scene.id}-audio.${extForAudio(audio.contentType)}`;
+      const obj = await this.d.storage.put(key, audio.data, audio.contentType);
+      const asset: Asset = {
+        id: randomUUID(),
+        sceneId: scene.id,
+        kind: "audio",
+        storageUrl: obj.url,
+        providerId: this.d.voiceProvider.id,
+        contentHash: contentHash([script.script, this.d.voiceProvider.id]),
+        cost: audio.cost,
+        status: "ready",
+        meta: { contentType: audio.contentType, durationSec: audio.durationSec, script: script.script },
+      };
+      scene.assets = [...scene.assets.filter((a) => a.kind !== "audio"), asset];
+      stored.costSpentUSD += audio.cost;
+      if (stored.costSpentUSD >= stored.capUSD) stored.capReached = true;
+      await this.d.repo.save(stored);
+      trace("scene.narration", { workId, sceneId: scene.id, costUSD: audio.cost });
+    } catch (err) {
+      trace("scene.narration.failed", { workId, sceneId: scene.id });
       throw err instanceof Error ? err : new Error(String(err));
     }
   }
@@ -462,4 +741,64 @@ function extFor(contentType: string): string {
   if (contentType.includes("png")) return "png";
   if (contentType.includes("webp")) return "webp";
   return "jpg";
+}
+
+function extForAudio(contentType: string): string {
+  if (contentType.includes("wav")) return "wav";
+  if (contentType.includes("mpeg") || contentType.includes("mp3")) return "mp3";
+  if (contentType.includes("ogg")) return "ogg";
+  return "wav";
+}
+
+function hasAudio(scene: Scene): boolean {
+  return scene.assets.some((a) => a.kind === "audio" && a.status === "ready");
+}
+
+/** 画像差し替え時のアセット統合: 新画像 + 既存音声を残し、陳腐化した動画は除去する。 */
+function mergeAssets(scene: Scene, image: Asset): Asset[] {
+  return [image, ...scene.assets.filter((a) => a.kind === "audio")];
+}
+
+/** シーンに登場するキャラの参照画像 URL を集める（一貫性レベル2 §7.4）。 */
+function referenceImagesForScene(scene: Scene, bible?: StoryBible): string[] {
+  if (!bible) return [];
+  const names = new Set(scene.directingNotes.characters ?? []);
+  const urls: string[] = [];
+  for (const c of bible.characters) {
+    if (names.has(c.name) && c.referenceImageUrl) urls.push(c.referenceImageUrl);
+  }
+  return urls;
+}
+
+/** 整合チェック用にシーン登場キャラの設定を整形する（§7.8）。 */
+function consistencyCharacters(scene: Scene, bible?: StoryBible): ConsistencyCharacter[] {
+  if (!bible) return [];
+  const names = new Set(scene.directingNotes.characters ?? []);
+  return bible.characters
+    .filter((c) => names.has(c.name))
+    .map((c) => ({
+      name: c.name,
+      appearance:
+        typeof (c.appearance as { description?: string }).description === "string"
+          ? (c.appearance as { description?: string }).description!
+          : "",
+      visualTags: c.visualTags,
+    }));
+}
+
+/** 当該シーンで初登場するキャラがいるか（§7.8 のヒューリスティック）。 */
+function isFirstAppearance(work: Work, index: number): boolean {
+  const scene = work.scenes[index];
+  if (!scene) return false;
+  const current = scene.directingNotes.characters ?? [];
+  if (current.length === 0) return false;
+  const seen = new Set<string>();
+  for (let i = 0; i < index; i++) {
+    for (const n of work.scenes[i]!.directingNotes.characters ?? []) seen.add(n);
+  }
+  return current.some((n) => !seen.has(n));
+}
+
+function toBase64(data: Uint8Array): string {
+  return Buffer.from(data).toString("base64");
 }

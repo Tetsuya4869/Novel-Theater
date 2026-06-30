@@ -21,6 +21,26 @@ export { DummyVideoProvider, FalVideoProvider, createVideoProvider } from "./vid
 // ハイライト選択 / タイムライン（Phase 2）
 export { selectHighlightIndices, maxVideosForLevel, buildTimeline } from "./highlights";
 
+// Story Bible / ナレーション / 整合チェック / 音声（Phase 3）
+export {
+  HeuristicBibleBuilder,
+  ClaudeBibleBuilder,
+  type BibleBuilder,
+  type BuiltBible,
+} from "./bible";
+export {
+  HeuristicNarrationWriter,
+  ClaudeNarrationWriter,
+  type NarrationWriter,
+} from "./narration";
+export {
+  NoopConsistencyChecker,
+  ClaudeVisionChecker,
+  type ConsistencyChecker,
+  type ConsistencyResult,
+} from "./consistency";
+export { DummyVoiceProvider, ElevenLabsVoiceProvider, createVoiceProvider } from "./voice";
+
 // コスト
 export { computeLLMCostUSD, type TokenUsage } from "./cost";
 

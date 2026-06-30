@@ -9,6 +9,7 @@ export async function POST(req: Request) {
     title?: string;
     style?: string;
     videoLevel?: "none" | "highlight" | "rich";
+    narration?: boolean;
   };
   try {
     body = await req.json();
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
       title: body.title,
       style: body.style,
       videoLevel: body.videoLevel,
+      narration: body.narration,
       prefetchCount: 4,
     });
     return NextResponse.json(result);

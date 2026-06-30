@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Work } from "@novel-theater/types";
+import type { StoryBible, Work } from "@novel-theater/types";
 
 /**
  * 永続化レイヤ（PLAN.md §8 / Phase 1）。
@@ -12,6 +12,8 @@ import type { Work } from "@novel-theater/types";
  */
 export interface StoredWork {
   work: Work;
+  /** 一貫性エンジン（Story Bible）。Phase 3 で構築（§7.4）。 */
+  bible?: StoryBible;
   /** これまでに生成に要した USD 累計。 */
   costSpentUSD: number;
   /** 1 作品あたりのコスト上限（USD）。 */

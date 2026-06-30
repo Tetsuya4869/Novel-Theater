@@ -232,6 +232,65 @@ input[type="text"] {
   margin-bottom: 0.75rem;
 }
 
+.stage__audio {
+  padding: 0.5rem 1rem 0;
+}
+
+.stage__editor {
+  padding: 0.75rem 1rem 1rem;
+}
+
+/* キャラクター設定エディタ */
+.chared {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.chared summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.chared__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.chared__row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.chared__ref {
+  width: 72px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.chared__ref--empty {
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: #221d19;
+}
+
+.chared__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+}
+
 /* シアター（没入）モード */
 .player {
   background: #000;
