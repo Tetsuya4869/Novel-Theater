@@ -60,7 +60,8 @@ export class FileWorkRepository implements WorkRepository {
   private readonly cache = new Map<string, StoredWork>();
   private readonly hashIndex = new Map<string, string>();
   private loaded = false;
-  private writeChain: Promise<void> = Promise.resolve();
+  /** 作品ごとの書き込み直列化。別作品の書き込みは並列のまま（不要な相互ブロックを避ける）。 */
+  private readonly writeChains = new Map<string, Promise<void>>();
 
   constructor(dir: string) {
     this.dir = resolve(dir);
@@ -89,14 +90,24 @@ export class FileWorkRepository implements WorkRepository {
     stored.updatedAt = Date.now();
     this.cache.set(stored.work.id, stored);
     this.hashIndex.set(stored.work.contentHash, stored.work.id);
-    const path = join(this.dir, `${stored.work.id}.json`);
+    const id = stored.work.id;
+    const path = join(this.dir, `${id}.json`);
     const data = JSON.stringify(stored);
-    // 直列化して同一ファイルへの同時書き込みを避ける。
-    this.writeChain = this.writeChain.then(async () => {
+    // 同一作品ファイルへの同時書き込みのみ直列化する。
+    const prev = this.writeChains.get(id) ?? Promise.resolve();
+    const next = prev.then(async () => {
       await mkdir(this.dir, { recursive: true });
       await writeFile(path, data);
     });
-    await this.writeChain;
+    // チェーンが途切れないよう、エラーを飲み込んだ tail を保持。
+    this.writeChains.set(
+      id,
+      next.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    await next;
   }
 
   async get(id: string): Promise<StoredWork | undefined> {

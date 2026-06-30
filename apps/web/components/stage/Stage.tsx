@@ -78,7 +78,8 @@ export function Stage({
             <button
               className="btn btn--ghost btn--sm"
               onClick={() => {
-                setDraft(scene.imagePrompt);
+                // 未生成シーンは imagePrompt が空なので summary を初期値にする。
+                setDraft(scene.imagePrompt || scene.summary);
                 setEditing((v) => !v);
               }}
             >
@@ -94,8 +95,10 @@ export function Stage({
           <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.4rem" }}>
             <button
               className="btn btn--sm"
+              disabled={!draft.trim()}
               onClick={() => {
-                onSavePrompt(scene.id, draft);
+                if (!draft.trim()) return;
+                onSavePrompt(scene.id, draft.trim());
                 setEditing(false);
               }}
             >

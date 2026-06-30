@@ -66,6 +66,14 @@ export interface PlanOptions {
 
 const MAX_CONSISTENCY_ATTEMPTS = 2;
 
+/** 「すでに画像が存在する（再生成すると動画/完成物を壊す）」シーン状態。 */
+const SCENE_HAS_IMAGE: ReadonlySet<string> = new Set([
+  "image_ready",
+  "image_generating",
+  "video_ready",
+  "video_generating",
+]);
+
 export interface PlanResult {
   workId: string;
   /** 同一テキスト再投入によるキャッシュヒットなら true（§8.3）。 */
@@ -84,8 +92,28 @@ const DEFAULT_STYLE = STYLE_PRESETS[0]!.prompt;
  */
 export class GenerationService {
   private forceCounter = 0;
+  /** 作品ごとの直列化ロック。共有された StoredWork への read-modify-write 競合を防ぐ。 */
+  private readonly workLocks = new Map<string, Promise<unknown>>();
 
   constructor(private readonly d: GenerationServiceDeps) {}
+
+  /**
+   * 同一 workId の処理を直列化する（§Phase1 のインプロセス・キュー前提の暫定対策）。
+   * 異なる作品は並列のまま。本番は Postgres の行ロック等に置き換える。
+   */
+  private withWorkLock<T>(workId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.workLocks.get(workId) ?? Promise.resolve();
+    const result = prev.then(fn, fn);
+    // チェーンが途切れないよう、エラーを飲み込んだ tail を次のロックとして保持。
+    this.workLocks.set(
+      workId,
+      result.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return result;
+  }
 
   async plan(text: string, opts: PlanOptions = {}): Promise<PlanResult> {
     const normalized = normalizeText(text);
@@ -129,9 +157,14 @@ export class GenerationService {
     };
     await this.d.repo.save(stored);
 
-    // Story Bible（一貫性エンジン §7.4）を構築。キャラ参照画像も生成しておく。
+    // Story Bible（一貫性エンジン §7.4）はジョブ化して投入し、リクエストをブロックしない。
+    // priority -1 で先頭に実行され、ロックによりシーン生成より先に参照画像が揃う。
     if (opts.buildBible !== false) {
-      await this.buildBible(workId);
+      this.d.queue.add({
+        id: `${workId}:bible`,
+        priority: -1,
+        run: () => this.withWorkLock(workId, () => this.buildBible(workId).then(() => undefined)),
+      });
     }
 
     const prefetch = opts.prefetchCount ?? 4;
@@ -164,9 +197,9 @@ export class GenerationService {
     for (const i of indices) {
       const scene = stored.work.scenes[i];
       if (!scene) continue;
-      if (!opts.force && (scene.status === "image_ready" || scene.status === "image_generating")) {
-        continue;
-      }
+      // image_ready / image_generating はもちろん、video_ready / video_generating も
+      // 「画像は出来ている」状態なので再生成しない（先読みで動画を消さない）。
+      if (!opts.force && SCENE_HAS_IMAGE.has(scene.status)) continue;
       if (stored.capReached && !opts.force) continue;
 
       const jobId = opts.force
@@ -177,7 +210,7 @@ export class GenerationService {
       this.d.queue.add({
         id: jobId,
         priority: i,
-        run: () => this.runSceneJob(workId, i, Boolean(opts.force)),
+        run: () => this.withWorkLock(workId, () => this.runSceneJob(workId, i, Boolean(opts.force))),
       });
       enqueued++;
     }
@@ -219,7 +252,7 @@ export class GenerationService {
       this.d.queue.add({
         id: jobId,
         priority: 1000 + i,
-        run: () => this.runVideoJob(workId, i, Boolean(opts.force)),
+        run: () => this.withWorkLock(workId, () => this.runVideoJob(workId, i, Boolean(opts.force))),
       });
       enqueued++;
     }
@@ -292,7 +325,7 @@ export class GenerationService {
       this.d.queue.add({
         id: jobId,
         priority: 2000 + i,
-        run: () => this.runNarrationJob(workId, i),
+        run: () => this.withWorkLock(workId, () => this.runNarrationJob(workId, i)),
       });
       enqueued++;
     }
@@ -315,28 +348,32 @@ export class GenerationService {
     characterId: string,
     patch: { name?: string; appearance?: string; visualTags?: string[] },
   ): Promise<boolean> {
-    const stored = await this.d.repo.get(workId);
-    if (!stored?.bible) return false;
-    const ch = stored.bible.characters.find((c) => c.id === characterId);
-    if (!ch) return false;
-    if (patch.name !== undefined) ch.name = patch.name;
-    if (patch.appearance !== undefined) ch.appearance = { description: patch.appearance };
-    if (patch.visualTags !== undefined) ch.visualTags = patch.visualTags;
-    await this.generateReferenceImage(stored, stored.bible, ch);
-    await this.d.repo.save(stored);
-    return true;
+    return this.withWorkLock(workId, async () => {
+      const stored = await this.d.repo.get(workId);
+      if (!stored?.bible) return false;
+      const ch = stored.bible.characters.find((c) => c.id === characterId);
+      if (!ch) return false;
+      if (patch.name !== undefined) ch.name = patch.name;
+      if (patch.appearance !== undefined) ch.appearance = { description: patch.appearance };
+      if (patch.visualTags !== undefined) ch.visualTags = patch.visualTags;
+      await this.generateReferenceImage(stored, stored.bible, ch);
+      await this.d.repo.save(stored);
+      return true;
+    });
   }
 
   /** シーンの画像プロンプトを手動編集する（§7.4 プロンプト手動編集）。 */
   async updateScenePrompt(workId: string, sceneId: string, prompt: string): Promise<boolean> {
-    const stored = await this.d.repo.get(workId);
-    if (!stored) return false;
-    const scene = stored.work.scenes.find((s) => s.id === sceneId);
-    if (!scene) return false;
-    scene.imagePrompt = prompt;
-    scene.promptLocked = true;
-    await this.d.repo.save(stored);
-    return true;
+    return this.withWorkLock(workId, async () => {
+      const stored = await this.d.repo.get(workId);
+      if (!stored) return false;
+      const scene = stored.work.scenes.find((s) => s.id === sceneId);
+      if (!scene) return false;
+      scene.imagePrompt = prompt;
+      scene.promptLocked = true;
+      await this.d.repo.save(stored);
+      return true;
+    });
   }
 
   /** 未生成/失敗シーンを同期的に処理する（worker / バッチ / テスト用）。 */
@@ -345,11 +382,11 @@ export class GenerationService {
     if (!stored) return;
     for (let i = 0; i < stored.work.scenes.length; i++) {
       const scene = stored.work.scenes[i]!;
-      if (!opts.force && scene.status === "image_ready") continue;
+      if (!opts.force && SCENE_HAS_IMAGE.has(scene.status)) continue;
       // 失敗は当該シーンに閉じ込め、残りのシーンの処理を続行する（§7.10）。
-      // runSceneJob 内で scene.status は failed に設定済み。
+      // runSceneJob 内で scene.status は failed に設定済み。ロックで共有オブジェクト競合を防ぐ。
       try {
-        await this.runSceneJob(workId, i, Boolean(opts.force));
+        await this.withWorkLock(workId, () => this.runSceneJob(workId, i, Boolean(opts.force)));
       } catch {
         /* シーン単位の失敗は無視して継続 */
       }
@@ -368,7 +405,8 @@ export class GenerationService {
     if (!stored) return;
     const scene = stored.work.scenes[index];
     if (!scene) return;
-    if (!force && scene.status === "image_ready") return;
+    // 既に画像/動画が出来ているシーンは再生成しない（force 時のみ通す）。
+    if (!force && SCENE_HAS_IMAGE.has(scene.status)) return;
 
     // コスト上限ガード（§7.11 / §11.2）。
     if (stored.costSpentUSD >= stored.capUSD) {
@@ -390,6 +428,7 @@ export class GenerationService {
       if (scene.promptLocked && scene.imagePrompt) {
         prompt = scene.imagePrompt;
         negative = scene.negativePrompt;
+        aspect = previousAspectRatio(scene) ?? "4:3"; // 既存コマのアスペクト比を保つ
       } else {
         const built = await this.d.promptBuilder.build(
           sceneToSegmented(scene),
@@ -493,6 +532,13 @@ export class GenerationService {
         if (result.suggestedPrompt) prompt = result.suggestedPrompt;
         else negative = negative ? `${negative}, inconsistent` : "inconsistent";
       }
+
+      // ループがコマ絵を生成せずに終了した場合（途中でコスト上限に到達等）は
+      // image_generating のまま放置せず終端状態にする（スピナー固着の防止）。
+      if (scene.status === "image_generating") {
+        scene.status = readyImage(scene) ? "image_ready" : "placeholder";
+        await this.d.repo.save(stored);
+      }
     } catch (err) {
       scene.status = "failed";
       await this.d.repo.save(stored);
@@ -512,10 +558,7 @@ export class GenerationService {
       return;
     }
     try {
-      const appearance =
-        typeof (ch.appearance as { description?: string }).description === "string"
-          ? (ch.appearance as { description?: string }).description
-          : "";
+      const appearance = ch.appearance.description ?? "";
       const prompt = [
         bible.artStyle.description,
         "character reference sheet",
@@ -664,6 +707,13 @@ function readyImage(scene: Scene): Asset | undefined {
   return scene.assets.find((a) => a.kind === "image" && a.status === "ready");
 }
 
+/** 既存コマ絵のアスペクト比を取り出す（手動プロンプト再生成で比率を維持するため）。 */
+function previousAspectRatio(scene: Scene): AspectRatio | undefined {
+  const img = scene.assets.find((a) => a.kind === "image");
+  const ar = img?.meta?.["aspectRatio"];
+  return typeof ar === "string" ? (ar as AspectRatio) : undefined;
+}
+
 function clampDuration(chars: number): number {
   return Math.max(2, Math.min(6, Math.round((2 + chars / 120) * 10) / 10));
 }
@@ -778,10 +828,7 @@ function consistencyCharacters(scene: Scene, bible?: StoryBible): ConsistencyCha
     .filter((c) => names.has(c.name))
     .map((c) => ({
       name: c.name,
-      appearance:
-        typeof (c.appearance as { description?: string }).description === "string"
-          ? (c.appearance as { description?: string }).description!
-          : "",
+      appearance: c.appearance.description ?? "",
       visualTags: c.visualTags,
     }));
 }

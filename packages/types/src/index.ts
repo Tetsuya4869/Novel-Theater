@@ -94,10 +94,16 @@ export interface Work {
 // Story Bible（一貫性エンジン §7.4）
 // ---------------------------------------------------------------------------
 
+export interface CharacterAppearance {
+  /** 髪・目・体格・服装・象徴的特徴をまとめた記述。 */
+  description?: string;
+  [k: string]: unknown;
+}
+
 export interface Character {
   id: string;
   name: string;
-  appearance: Record<string, unknown>;
+  appearance: CharacterAppearance;
   visualTags: string[];
   referenceImageUrl?: string;
   defaultSeed?: number;

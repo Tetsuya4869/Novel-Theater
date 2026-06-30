@@ -38,28 +38,40 @@ export function ImmersivePlayer({
     });
   }, [scenes.length]);
 
+  // プリミティブで依存を取り、ポーリングで timeline 配列が作り直されても
+  // （URL/尺が変わらない限り）エフェクトが再実行＝音声リスタートしないようにする。
+  const audioUrl = timeline[index]?.audioAssetUrl;
+  const durationSec = timeline[index]?.durationSec ?? 4;
+
   // 自動進行: 音声があればその終了で、無ければ duration で進む。
+  // 音声の読み込み失敗・自動再生ブロック時はフォールバックタイマーで進める（ハング防止）。
   useEffect(() => {
     if (!playing) return;
-    const audioUrl = timeline[index]?.audioAssetUrl;
     const audioEl = audioRef.current;
 
     if (audioUrl && audioEl) {
       audioEl.src = audioUrl;
       audioEl.currentTime = 0;
+      let fallback: ReturnType<typeof setTimeout> | undefined;
       const onEnded = () => advance();
+      const onError = () => advance();
       audioEl.addEventListener("ended", onEnded);
-      void audioEl.play().catch(() => {});
+      audioEl.addEventListener("error", onError);
+      void audioEl.play().catch(() => {
+        // 自動再生がブロックされた等で再生できない → 尺ぶん待って進める。
+        fallback = setTimeout(advance, durationSec * 1000);
+      });
       return () => {
         audioEl.removeEventListener("ended", onEnded);
+        audioEl.removeEventListener("error", onError);
         audioEl.pause();
+        if (fallback) clearTimeout(fallback);
       };
     }
 
-    const dur = timeline[index]?.durationSec ?? 4;
-    const id = setTimeout(advance, dur * 1000);
+    const id = setTimeout(advance, durationSec * 1000);
     return () => clearTimeout(id);
-  }, [playing, index, timeline, advance]);
+  }, [playing, index, audioUrl, durationSec, advance]);
 
   const scene = scenes[index];
   if (!scene) return null;

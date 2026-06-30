@@ -202,6 +202,22 @@ describe("動画化 (Phase 2)", () => {
     expect(scene.assets.some((a) => a.kind === "image")).toBe(true);
   });
 
+  it("先読み(enqueueScenes)は video_ready シーンを再生成して動画を壊さない", async () => {
+    const { service, repo, queue } = makeService();
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    const sceneId = (await repo.get(workId))!.work.scenes[0]!.id;
+    await service.animateScene(workId, sceneId);
+    await queue.onIdle();
+    expect((await repo.get(workId))!.work.scenes[0]!.status).toBe("video_ready");
+
+    // 当該シーンが先読み範囲に入っても動画は維持される（再生成で消えない）。
+    await service.enqueueScenes(workId, [0]);
+    await queue.onIdle();
+    const scene = (await repo.get(workId))!.work.scenes[0]!;
+    expect(scene.status).toBe("video_ready");
+    expect(scene.assets.some((a) => a.kind === "video" && a.status === "ready")).toBe(true);
+  });
+
   it("動画生成失敗時は静止画へフォールバックする", async () => {
     const failingVideo = {
       id: "failvid",
@@ -303,8 +319,9 @@ const bibleWithCharacters: BibleBuilder = {
 
 describe("Story Bible / 一貫性 (Phase 3)", () => {
   it("buildBible がキャラの参照画像を生成し referenceImageUrl を設定する", async () => {
-    const { service, repo } = makeService({ bibleBuilder: bibleWithCharacters });
+    const { service, repo, queue } = makeService({ bibleBuilder: bibleWithCharacters });
     const { workId } = await service.plan(TEXT, { prefetchCount: 0, buildBible: true });
+    await queue.onIdle(); // Bible 構築はジョブ化されている
     const stored = await repo.get(workId);
     expect(stored!.bible).toBeDefined();
     expect(stored!.bible!.characters.length).toBe(1);
@@ -312,8 +329,9 @@ describe("Story Bible / 一貫性 (Phase 3)", () => {
   });
 
   it("updateCharacter で設定編集＆参照画像を再生成できる", async () => {
-    const { service, repo } = makeService({ bibleBuilder: bibleWithCharacters });
+    const { service, repo, queue } = makeService({ bibleBuilder: bibleWithCharacters });
     const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    await queue.onIdle(); // Bible 構築はジョブ化されている
     const charId = (await repo.get(workId))!.bible!.characters[0]!.id;
     const ok = await service.updateCharacter(workId, charId, { visualTags: ["white hair"] });
     expect(ok).toBe(true);

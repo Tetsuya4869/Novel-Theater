@@ -24,11 +24,7 @@ export function CharacterEditor({
             id={c.id}
             name={c.name}
             referenceImageUrl={c.referenceImageUrl}
-            appearance={
-              typeof (c.appearance as { description?: string }).description === "string"
-                ? (c.appearance as { description?: string }).description!
-                : ""
-            }
+            appearance={c.appearance.description ?? ""}
             visualTags={c.visualTags}
             onSave={onSave}
           />

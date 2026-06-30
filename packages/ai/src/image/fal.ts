@@ -17,18 +17,25 @@ export class FalImageProvider implements ImageProvider {
 
   async generate(input: ImageGenerateInput): Promise<ImageGenerateResult> {
     const started = Date.now();
+    const body: Record<string, unknown> = {
+      prompt: input.prompt,
+      negative_prompt: input.negativePrompt,
+      seed: input.seed,
+      image_size: aspectToSize(input.aspectRatio),
+    };
+    // 一貫性レベル2: キャラ参照画像を注入（§7.4）。採用する fal モデルに応じて
+    // image-to-image の image_url / character-reference 入力へマップする（要モデル別調整）。
+    if (input.referenceImages && input.referenceImages.length > 0) {
+      body.image_url = input.referenceImages[0];
+      body.reference_image_urls = input.referenceImages;
+    }
     const res = await fetch(`https://fal.run/${this.model}`, {
       method: "POST",
       headers: {
         Authorization: `Key ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        prompt: input.prompt,
-        negative_prompt: input.negativePrompt,
-        seed: input.seed,
-        image_size: aspectToSize(input.aspectRatio),
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       throw new Error(`fal リクエスト失敗: ${res.status} ${res.statusText}`);
