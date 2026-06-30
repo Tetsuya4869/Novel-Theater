@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getService, maxInputChars } from "@/lib/services";
+import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,7 @@ export async function POST(req: Request) {
     style?: string;
     videoLevel?: "none" | "highlight" | "rich";
     narration?: boolean;
+    visibility?: "private" | "unlisted" | "public";
   };
   try {
     body = await req.json();
@@ -27,11 +29,14 @@ export async function POST(req: Request) {
   }
 
   try {
+    const session = await getSession();
     const result = await getService().plan(text, {
       title: body.title,
       style: body.style,
       videoLevel: body.videoLevel,
       narration: body.narration,
+      ownerId: session?.userId,
+      visibility: body.visibility,
       prefetchCount: 4,
     });
     return NextResponse.json(result);

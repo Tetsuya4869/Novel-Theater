@@ -53,6 +53,9 @@ const EnvSchema = z.object({
 
   STORAGE_DIR: z.string().default(".storage"),
 
+  /** HMAC セッション署名鍵（Phase 4）。未設定時は開発用の固定値にフォールバック。 */
+  NT_AUTH_SECRET: z.string().min(1).default("dev-insecure-secret-change-me"),
+
   DATABASE_URL: z.string().optional(),
   REDIS_URL: z.string().optional(),
 });

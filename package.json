@@ -8,10 +8,12 @@
     "spike": "tsx scripts/spike.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:web": "tsc -p apps/web/tsconfig.json --noEmit",
+    "typecheck:worker": "tsc -p apps/worker/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "pnpm --filter web dev",
-    "build:web": "pnpm --filter web build"
+    "build:web": "pnpm --filter web build",
+    "worker": "tsx apps/worker/src/index.ts"
   },
   "engines": {
     "node": ">=20"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getService } from "@/lib/services";
+import { guardEditable } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,8 @@ export async function POST(
   ctx: { params: Promise<{ workId: string; characterId: string }> },
 ) {
   const { workId, characterId } = await ctx.params;
+  const guard = await guardEditable(workId);
+  if (!guard.ok) return guard.response;
   let body: { name?: string; appearance?: string; visualTags?: string[] };
   try {
     body = await req.json();

@@ -404,3 +404,69 @@ describe("プロンプト手動編集 (Phase 3)", () => {
     expect(after.status).toBe("image_ready");
   });
 });
+
+// Phase 4 ---------------------------------------------------------------------
+
+describe("アカウント / 公開範囲 / ライブラリ (Phase 4)", () => {
+  it("ownerId/visibility を設定して保存し、ライブラリと公開ギャラリーに反映する", async () => {
+    const { service } = makeService();
+    const a = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1", visibility: "public" });
+    const b = await service.plan("別の話。\n\n全く違う本文。", {
+      prefetchCount: 0,
+      ownerId: "u2",
+      visibility: "private",
+    });
+
+    const mineU1 = await service.listMine("u1");
+    expect(mineU1.map((s) => s.work.id)).toEqual([a.workId]);
+    const mineU2 = await service.listMine("u2");
+    expect(mineU2.map((s) => s.work.id)).toEqual([b.workId]);
+
+    const pub = await service.listPublic();
+    expect(pub.map((s) => s.work.id)).toContain(a.workId);
+    expect(pub.map((s) => s.work.id)).not.toContain(b.workId);
+  });
+
+  it("同一テキストでも所有者が違えば別作品になる（キャッシュは所有者単位）", async () => {
+    const { service } = makeService();
+    const a = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1" });
+    const b = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u2" });
+    expect(b.cached).toBe(false);
+    expect(b.workId).not.toBe(a.workId);
+    // 同一所有者の再投入はキャッシュヒット。
+    const again = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1" });
+    expect(again.cached).toBe(true);
+    expect(again.workId).toBe(a.workId);
+  });
+
+  it("private は所有者のみ閲覧可、public は誰でも閲覧可", async () => {
+    const { service } = makeService();
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1", visibility: "private" });
+    expect(await service.getForViewer(workId, "u1")).toBeDefined();
+    expect(await service.getForViewer(workId, "u2")).toBeUndefined();
+    expect(await service.getForViewer(workId)).toBeUndefined();
+
+    await service.setVisibility(workId, "public", "u1");
+    expect(await service.getForViewer(workId, "u2")).toBeDefined();
+    expect(await service.getForViewer(workId)).toBeDefined();
+  });
+
+  it("setVisibility は所有者以外を拒否する", async () => {
+    const { service, repo } = makeService();
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1", visibility: "private" });
+    expect(await service.setVisibility(workId, "public", "intruder")).toBe(false);
+    expect((await repo.get(workId))!.work.visibility).toBe("private");
+    expect(await service.setVisibility(workId, "public", "u1")).toBe(true);
+    expect((await repo.get(workId))!.work.visibility).toBe("public");
+  });
+
+  it("canEdit: 所有者のみ、匿名作品は誰でも", async () => {
+    const { service, repo } = makeService();
+    const owned = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1" });
+    const anon = await service.plan("匿名の話。\n\n本文。", { prefetchCount: 0 });
+    expect(service.canEdit((await repo.get(owned.workId))!, "u1")).toBe(true);
+    expect(service.canEdit((await repo.get(owned.workId))!, "u2")).toBe(false);
+    expect(service.canEdit((await repo.get(owned.workId))!)).toBe(false);
+    expect(service.canEdit((await repo.get(anon.workId))!, "anyone")).toBe(true);
+  });
+});

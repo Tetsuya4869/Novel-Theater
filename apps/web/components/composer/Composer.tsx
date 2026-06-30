@@ -25,12 +25,19 @@ const VIDEO_LEVELS: Array<{ id: "none" | "highlight" | "rich"; label: string }> 
   { id: "rich", label: "多めに動画" },
 ];
 
+const VISIBILITIES: Array<{ id: "private" | "unlisted" | "public"; label: string }> = [
+  { id: "private", label: "非公開（自分のみ）" },
+  { id: "unlisted", label: "限定公開（URL を知る人）" },
+  { id: "public", label: "公開（ギャラリー掲載）" },
+];
+
 export function Composer() {
   const router = useRouter();
   const [text, setText] = useState("");
   const [styleId, setStyleId] = useState(STYLE_PRESETS[0]!.id);
   const [videoLevel, setVideoLevel] = useState<"none" | "highlight" | "rich">("none");
   const [narration, setNarration] = useState(false);
+  const [visibility, setVisibility] = useState<"private" | "unlisted" | "public">("private");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +51,7 @@ export function Composer() {
         style: preset.prompt,
         videoLevel,
         narration,
+        visibility,
         title: "投入テキスト",
       });
       router.push(`/theater/${workId}`);
@@ -99,6 +107,21 @@ export function Composer() {
             style={{ display: "block", marginTop: "0.4rem" }}
           >
             {VIDEO_LEVELS.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          <span className="muted">公開範囲</span>
+          <select
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as "private" | "unlisted" | "public")}
+            style={{ display: "block", marginTop: "0.4rem" }}
+          >
+            {VISIBILITIES.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.label}
               </option>

@@ -116,6 +116,32 @@ POST /api/generate
   全文書き換えのコストは Postgres 移行で解消する想定（フォローアップ）。
 - **fal アダプタ**: 参照画像（一貫性レベル2）を i2i/character-reference 入力へ渡すよう配線。
 
+## Phase 4（広げる §10）の追加点
+
+DoD は 2 点 ——「①アカウントで保存して後日見返せる／他人の作品を読める」「②最低 1 種の
+エクスポート＋ワーカーを増やして同時生成数を伸ばせる」。
+
+- **アカウント（`packages/auth`）**: 外部依存ゼロの HMAC 署名付き Cookie セッション
+  （`signSession`/`verifySession`、`node:crypto` の `timingSafeEqual`）。`apps/web/lib/session.ts`
+  が読み取り、`/api/auth/login`（表示名のみの開発用ログイン）/`logout` が発行・失効。
+  本番は Auth.js / Clerk / Supabase Auth へ差し替える（interface は `Session` のみ）。
+- **所有権・公開範囲**: `StoredWork.ownerId` と `Work.visibility`（private/unlisted/public）。
+  `GenerationService` に `canEdit` / `getForViewer` / `setVisibility` / `listMine` / `listPublic` を追加。
+  content_hash キャッシュは**所有者単位**に分離（別ユーザーが同一テキストで他人の作品を引かない）。
+  編集系 API は `guardEditable`（所有者のみ）で保護。private は所有者以外 404（存在を漏らさない）。
+  閲覧専用ユーザーには先読み（コスト発生）を行わない。
+- **ライブラリ / ギャラリー**: `WorkRepository` に `listByUser`/`listPublic`/`listAll`（新しい順）を追加。
+  `/library`（自分の作品）・`/gallery`（公開作品）と共通の `WorkGrid`。共通ヘッダー（`SiteHeader`）で
+  ログイン状態と導線を表示。
+- **エクスポート（`packages/export`）**: `renderWorkHtml` がコマ絵＋本文を単一 HTML（自己完結の「劇場」）
+  として書き出す。`/api/works/[id]/export` が `Content-Disposition: attachment` で配信
+  （`baseUrl` で画像 URL を絶対化）。MP4 / PDF / EPUB は将来 ffmpeg 等で追加。
+- **独立ワーカー（`apps/worker`）**: web と同じ共有ストレージを介して同一の `GenerationService` を駆動し、
+  未生成シーンを消化する独立プロセス（`pnpm worker [--once]`）。`FileWorkRepository.listAll` は
+  ディスクを再走査するため、別プロセスが作った作品も取り込める。複数プロセス／マシンで並走させると
+  水平スケールする。dev のファイル版は重複処理を content_hash キャッシュで緩和するのみで、真の分散ロックは
+  Postgres（行ロック）+ Redis/BullMQ + S3 への移行で得る（interface は同一）。
+
 ## 設計上の要点
 
 - **三層分離を最初から崩さない**: フロントは軽く、生成ロジックは `packages/ai` に集約。`apps/web` と将来の `apps/worker` は `packages/ai`・`packages/types` を共有し、契約を型で固定する。

@@ -8,12 +8,14 @@ import {
   narrateScene,
   prefetchScenes,
   regenerateScene,
+  setVisibility,
   updateCharacter,
   updateScenePrompt,
 } from "@/lib/client";
 import { Stage } from "@/components/stage/Stage";
 import { ImmersivePlayer } from "@/components/stage/ImmersivePlayer";
 import { CharacterEditor } from "@/components/composer/CharacterEditor";
+import { WorkActions } from "@/components/reader/WorkActions";
 
 const POLL_MS = 2000;
 const MAX_TICKS = 150;
@@ -33,6 +35,7 @@ export function Reader({ initial }: { initial: WorkView }) {
   const [mode, setMode] = useState<Mode>("read");
   const refs = useRef<Array<HTMLDivElement | null>>([]);
   const work = view.work;
+  const canEdit = view.canEdit;
 
   const blocks = useMemo(
     () =>
@@ -71,11 +74,12 @@ export function Reader({ initial }: { initial: WorkView }) {
     return () => observer.disconnect();
   }, [blocks.length, mode]);
 
-  // 現在地周辺の先読み。
+  // 現在地周辺の先読み（所有者のみ。閲覧者は生成済みコマのみ表示）。
   useEffect(() => {
+    if (!canEdit) return;
     const from = Math.max(0, active - PREFETCH_BEFORE);
     prefetchScenes(work.id, from, PREFETCH_COUNT).catch(() => {});
-  }, [active, work.id]);
+  }, [active, work.id, canEdit]);
 
   // 生成完了をポーリングで反映。
   useEffect(() => {
@@ -149,6 +153,19 @@ export function Reader({ initial }: { initial: WorkView }) {
     [work.id, refresh],
   );
 
+  const onChangeVisibility = useCallback(
+    async (visibility: "private" | "unlisted" | "public") => {
+      // 楽観更新してからサーバーへ反映。
+      setView((v) => ({ ...v, work: { ...v.work, visibility } }));
+      try {
+        await setVisibility(work.id, visibility);
+      } catch {
+        await refresh();
+      }
+    },
+    [work.id, refresh],
+  );
+
   const scrollTo = (i: number) => refs.current[i]?.scrollIntoView({ behavior: "smooth", block: "center" });
 
   const s = view.status;
@@ -198,12 +215,19 @@ export function Reader({ initial }: { initial: WorkView }) {
         </p>
       )}
 
-      {view.bible && view.bible.characters.length > 0 && (
+      <WorkActions
+        workId={work.id}
+        visibility={work.visibility}
+        canEdit={canEdit}
+        onChangeVisibility={onChangeVisibility}
+      />
+
+      {canEdit && view.bible && view.bible.characters.length > 0 && (
         <CharacterEditor bible={view.bible} onSave={onUpdateCharacter} />
       )}
 
       {mode === "watch" ? (
-        <ImmersivePlayer view={view} onAnimate={onAnimate} />
+        <ImmersivePlayer view={view} onAnimate={canEdit ? onAnimate : undefined} />
       ) : (
         <div className="reader">
           <div className="reader__text">
@@ -227,10 +251,10 @@ export function Reader({ initial }: { initial: WorkView }) {
           </div>
           <Stage
             scene={work.scenes[active] ?? null}
-            onRegenerate={onRegenerate}
-            onAnimate={onAnimate}
-            onNarrate={onNarrate}
-            onSavePrompt={onSavePrompt}
+            onRegenerate={canEdit ? onRegenerate : undefined}
+            onAnimate={canEdit ? onAnimate : undefined}
+            onNarrate={canEdit ? onNarrate : undefined}
+            onSavePrompt={canEdit ? onSavePrompt : undefined}
           />
         </div>
       )}

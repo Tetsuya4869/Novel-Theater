@@ -337,6 +337,94 @@ input[type="text"] {
   background: var(--panel);
 }
 
+/* サイトヘッダー（Phase 4） */
+.siteheader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+
+.siteheader__brand {
+  font-weight: 800;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.siteheader__nav {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+}
+
+.siteheader__nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.siteheader__auth,
+.siteheader__login {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 作品グリッド（ライブラリ / ギャラリー） */
+.workgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.workcard {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.workcard__thumb {
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+  background: #221d19;
+}
+
+.workcard__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.workcard__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+}
+
+/* 作品操作バー */
+.workactions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.workactions__vis {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 @media (max-width: 720px) {
   .reader {
     grid-template-columns: 1fr;

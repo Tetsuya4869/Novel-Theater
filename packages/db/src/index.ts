@@ -12,6 +12,8 @@ import type { StoryBible, Work } from "@novel-theater/types";
  */
 export interface StoredWork {
   work: Work;
+  /** 所有ユーザー ID（Phase 4）。匿名生成時は未設定。 */
+  ownerId?: string;
   /** 一貫性エンジン（Story Bible）。Phase 3 で構築（§7.4）。 */
   bible?: StoryBible;
   /** これまでに生成に要した USD 累計。 */
@@ -29,6 +31,16 @@ export interface WorkRepository {
   get(id: string): Promise<StoredWork | undefined>;
   /** 同一テキスト＋設定の再投入をキャッシュヒットさせる（§8.3）。 */
   findByContentHash(hash: string): Promise<StoredWork | undefined>;
+  /** ユーザーの作品ライブラリ（Phase 4）。新しい順。 */
+  listByUser(userId: string): Promise<StoredWork[]>;
+  /** 公開ギャラリー（visibility=public）。新しい順。 */
+  listPublic(): Promise<StoredWork[]>;
+  /** 全作品（worker / バッチ用）。 */
+  listAll(): Promise<StoredWork[]>;
+}
+
+function byNewest(a: StoredWork, b: StoredWork): number {
+  return b.createdAt - a.createdAt;
 }
 
 /** メモリ内リポジトリ（テスト・揮発用途）。 */
@@ -47,6 +59,15 @@ export class InMemoryWorkRepository implements WorkRepository {
   async findByContentHash(hash: string): Promise<StoredWork | undefined> {
     const id = this.byHash.get(hash);
     return id ? this.byId.get(id) : undefined;
+  }
+  async listByUser(userId: string): Promise<StoredWork[]> {
+    return [...this.byId.values()].filter((s) => s.ownerId === userId).sort(byNewest);
+  }
+  async listPublic(): Promise<StoredWork[]> {
+    return [...this.byId.values()].filter((s) => s.work.visibility === "public").sort(byNewest);
+  }
+  async listAll(): Promise<StoredWork[]> {
+    return [...this.byId.values()].sort(byNewest);
   }
 }
 
@@ -70,6 +91,11 @@ export class FileWorkRepository implements WorkRepository {
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
     this.loaded = true;
+    await this.scanDisk();
+  }
+
+  /** ディスク上の全 .json を読み直してキャッシュ/索引を更新する。 */
+  private async scanDisk(): Promise<void> {
     if (!existsSync(this.dir)) return;
     const files = await readdir(this.dir);
     for (const f of files) {
@@ -119,5 +145,23 @@ export class FileWorkRepository implements WorkRepository {
     await this.ensureLoaded();
     const id = this.hashIndex.get(hash);
     return id ? this.cache.get(id) : undefined;
+  }
+
+  async listByUser(userId: string): Promise<StoredWork[]> {
+    await this.ensureLoaded();
+    await this.scanDisk(); // 別プロセス（worker）の書き込みを取り込む。
+    return [...this.cache.values()].filter((s) => s.ownerId === userId).sort(byNewest);
+  }
+
+  async listPublic(): Promise<StoredWork[]> {
+    await this.ensureLoaded();
+    await this.scanDisk();
+    return [...this.cache.values()].filter((s) => s.work.visibility === "public").sort(byNewest);
+  }
+
+  async listAll(): Promise<StoredWork[]> {
+    await this.ensureLoaded();
+    await this.scanDisk();
+    return [...this.cache.values()].sort(byNewest);
   }
 }

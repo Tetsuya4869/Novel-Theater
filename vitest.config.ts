@@ -11,6 +11,10 @@ export default defineConfig({
       "@novel-theater/core": r("./packages/core/src/index.ts"),
       "@novel-theater/storage": r("./packages/storage/src/index.ts"),
       "@novel-theater/ai": r("./packages/ai/src/index.ts"),
+      "@novel-theater/db": r("./packages/db/src/index.ts"),
+      "@novel-theater/queue": r("./packages/queue/src/index.ts"),
+      "@novel-theater/auth": r("./packages/auth/src/index.ts"),
+      "@novel-theater/export": r("./packages/export/src/index.ts"),
     },
   },
   test: {

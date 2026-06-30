@@ -25,6 +25,9 @@ jobs:
       - name: Typecheck (packages + scripts)
         run: pnpm typecheck
 
+      - name: Typecheck (worker)
+        run: pnpm typecheck:worker
+
       - name: Unit tests
         run: pnpm test
 

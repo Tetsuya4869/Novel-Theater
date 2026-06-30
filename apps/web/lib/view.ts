@@ -6,6 +6,8 @@ export interface WorkView {
   work: Work;
   timeline: TimelineItem[];
   bible?: StoryBible;
+  /** 閲覧者が編集（再生成・公開設定など）できるか（Phase 4）。 */
+  canEdit: boolean;
   status: {
     total: number;
     ready: number;
@@ -20,13 +22,14 @@ export interface WorkView {
 }
 
 /** StoredWork を UI/JSON 用の安全なビューへ整形する。 */
-export function toWorkView(stored: StoredWork): WorkView {
+export function toWorkView(stored: StoredWork, opts: { canEdit?: boolean } = {}): WorkView {
   const scenes = stored.work.scenes;
   const count = (pred: (s: Work["scenes"][number]) => boolean) => scenes.filter(pred).length;
   return {
     work: stored.work,
     timeline: buildTimeline(stored.work),
     bible: stored.bible,
+    canEdit: opts.canEdit ?? false,
     status: {
       total: scenes.length,
       ready: count((s) => s.status === "image_ready" || s.status === "video_ready"),

@@ -26,6 +26,9 @@ importers:
       '@novel-theater/ai':
         specifier: workspace:*
         version: link:../../packages/ai
+      '@novel-theater/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@novel-theater/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -35,6 +38,9 @@ importers:
       '@novel-theater/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@novel-theater/export':
+        specifier: workspace:*
+        version: link:../../packages/export
       '@novel-theater/queue':
         specifier: workspace:*
         version: link:../../packages/queue
@@ -67,6 +73,37 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  apps/worker:
+    dependencies:
+      '@novel-theater/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@novel-theater/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@novel-theater/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@novel-theater/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
+      '@novel-theater/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      '@novel-theater/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.4
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/ai:
     dependencies:
       '@anthropic-ai/sdk':
@@ -91,6 +128,8 @@ importers:
         specifier: workspace:*
         version: link:../types
 
+  packages/auth: {}
+
   packages/config:
     dependencies:
       zod:
@@ -100,6 +139,12 @@ importers:
   packages/core: {}
 
   packages/db:
+    dependencies:
+      '@novel-theater/types':
+        specifier: workspace:*
+        version: link:../types
+
+  packages/export:
     dependencies:
       '@novel-theater/types':
         specifier: workspace:*

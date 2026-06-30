@@ -21,7 +21,11 @@
       "@novel-theater/types": ["packages/types/src/index.ts"],
       "@novel-theater/core": ["packages/core/src/index.ts"],
       "@novel-theater/storage": ["packages/storage/src/index.ts"],
-      "@novel-theater/ai": ["packages/ai/src/index.ts"]
+      "@novel-theater/ai": ["packages/ai/src/index.ts"],
+      "@novel-theater/db": ["packages/db/src/index.ts"],
+      "@novel-theater/queue": ["packages/queue/src/index.ts"],
+      "@novel-theater/auth": ["packages/auth/src/index.ts"],
+      "@novel-theater/export": ["packages/export/src/index.ts"]
     }
   }
 }

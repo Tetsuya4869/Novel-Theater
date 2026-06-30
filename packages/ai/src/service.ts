@@ -62,6 +62,10 @@ export interface PlanOptions {
   narration?: boolean;
   /** Story Bible を構築するか（§7.4）。既定 true。 */
   buildBible?: boolean;
+  /** 所有ユーザー ID（Phase 4）。ログイン時に設定するとライブラリに表示される。 */
+  ownerId?: string;
+  /** 公開範囲（Phase 4 §10）。既定 private。 */
+  visibility?: Work["visibility"];
 }
 
 const MAX_CONSISTENCY_ATTEMPTS = 2;
@@ -123,7 +127,8 @@ export class GenerationService {
       videoLevel: opts.videoLevel ?? "none",
       narration: opts.narration ?? false,
     };
-    const hash = contentHash([normalized, JSON.stringify(settings), "v1"]);
+    // 所有者ごとにキャッシュを分ける（別ユーザーが同一テキストで他人の作品を引かないように）。
+    const hash = contentHash([normalized, JSON.stringify(settings), opts.ownerId ?? "anon", "v1"]);
 
     const cachedWork = await this.d.repo.findByContentHash(hash);
     if (cachedWork) {
@@ -141,7 +146,7 @@ export class GenerationService {
       title: opts.title ?? "無題",
       sourceText: normalized,
       language: opts.language ?? "ja",
-      visibility: "private",
+      visibility: opts.visibility ?? "private",
       contentHash: hash,
       settings,
       scenes,
@@ -149,6 +154,7 @@ export class GenerationService {
     const now = Date.now();
     const stored: StoredWork = {
       work,
+      ownerId: opts.ownerId,
       costSpentUSD: 0,
       capUSD: opts.costLimitUSD ?? this.d.env.NT_COST_LIMIT_USD,
       capReached: false,
@@ -395,6 +401,50 @@ export class GenerationService {
 
   getStored(workId: string): Promise<StoredWork | undefined> {
     return this.d.repo.get(workId);
+  }
+
+  // --- Phase 4: アカウント / 公開範囲 / ライブラリ（§10「広げる」） ----------
+
+  /** 編集権限の判定。所有者本人のみ編集可。匿名作品（ownerId 未設定）は誰でも編集可（開発既定）。 */
+  canEdit(stored: StoredWork, userId?: string): boolean {
+    if (!stored.ownerId) return true;
+    return Boolean(userId) && stored.ownerId === userId;
+  }
+
+  /** 閲覧権限を考慮して作品を取得する。非公開は所有者のみ。 */
+  async getForViewer(workId: string, userId?: string): Promise<StoredWork | undefined> {
+    const stored = await this.d.repo.get(workId);
+    if (!stored) return undefined;
+    const v = stored.work.visibility;
+    // public / unlisted は誰でも閲覧可。private は所有者のみ。
+    if (v === "private" && !this.canEdit(stored, userId)) return undefined;
+    return stored;
+  }
+
+  /** 公開範囲を変更する（所有者のみ）。成功で true。 */
+  async setVisibility(
+    workId: string,
+    visibility: Work["visibility"],
+    userId?: string,
+  ): Promise<boolean> {
+    return this.withWorkLock(workId, async () => {
+      const stored = await this.d.repo.get(workId);
+      if (!stored) return false;
+      if (!this.canEdit(stored, userId)) return false;
+      stored.work.visibility = visibility;
+      await this.d.repo.save(stored);
+      return true;
+    });
+  }
+
+  /** 自分のライブラリ（新しい順 §10 DoD「保存して後日見返せる」）。 */
+  listMine(userId: string): Promise<StoredWork[]> {
+    return this.d.repo.listByUser(userId);
+  }
+
+  /** 公開ギャラリー（§10「他人の作品を読む」）。 */
+  listPublic(): Promise<StoredWork[]> {
+    return this.d.repo.listPublic();
   }
 
   // -------------------------------------------------------------------------
