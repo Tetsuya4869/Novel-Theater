@@ -133,9 +133,15 @@ DoD は 2 点 ——「①アカウントで保存して後日見返せる／他
 - **ライブラリ / ギャラリー**: `WorkRepository` に `listByUser`/`listPublic`/`listAll`（新しい順）を追加。
   `/library`（自分の作品）・`/gallery`（公開作品）と共通の `WorkGrid`。共通ヘッダー（`SiteHeader`）で
   ログイン状態と導線を表示。
-- **エクスポート（`packages/export`）**: `renderWorkHtml` がコマ絵＋本文を単一 HTML（自己完結の「劇場」）
-  として書き出す。`/api/works/[id]/export` が `Content-Disposition: attachment` で配信
-  （`baseUrl` で画像 URL を絶対化）。MP4 / PDF / EPUB は将来 ffmpeg 等で追加。
+- **エクスポート（`packages/export`）**: `renderWorkHtml`（単一 HTML の「劇場」）と `renderWorkMarkdown`
+  （Markdown）。`renderWork(work, format)` がルーティング用ヘルパ。`/api/works/[id]/export?format=html|md`
+  が `Content-Disposition: attachment` で配信（`baseUrl` で画像 URL を絶対化）。MP4 / PDF / EPUB は将来追加。
+- **青空文庫インポート（`packages/core` の `normalizeAozora`）**: ルビ（`漢字《かんじ》`・起点 `｜`）、
+  入力/外字注記（`※［＃…］`）、先頭の凡例ブロック、末尾の奥付（`底本：…`）を保守的に除去して素のテキスト化。
+  Composer のトグルから `/api/generate` がサーバー側で適用（クライアントに `node:crypto` を持ち込まない）。
+- **軽いソーシャル（いいね）**: `StoredWork.likeCount` ＋ `GenerationService.like`（閲覧可能作品のみ加算）。
+  `/api/works/[id]/like`、Reader の操作バーと作品カードに表示。ギャラリーは `?sort=popular` で人気順。
+  開発用の素朴な加算（多重いいね防止・レート制限は本番で追加）。
 - **独立ワーカー（`apps/worker`）**: web と同じ共有ストレージを介して同一の `GenerationService` を駆動し、
   未生成シーンを消化する独立プロセス（`pnpm worker [--once]`）。`FileWorkRepository.listAll` は
   ディスクを再走査するため、別プロセスが作った作品も取り込める。複数プロセス／マシンで並走させると

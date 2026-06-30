@@ -8,6 +8,8 @@ export interface WorkView {
   bible?: StoryBible;
   /** 閲覧者が編集（再生成・公開設定など）できるか（Phase 4）。 */
   canEdit: boolean;
+  /** いいね数（Phase 4 軽いソーシャル）。 */
+  likeCount: number;
   status: {
     total: number;
     ready: number;
@@ -30,6 +32,7 @@ export function toWorkView(stored: StoredWork, opts: { canEdit?: boolean } = {})
     timeline: buildTimeline(stored.work),
     bible: stored.bible,
     canEdit: opts.canEdit ?? false,
+    likeCount: stored.likeCount ?? 0,
     status: {
       total: scenes.length,
       ready: count((s) => s.status === "image_ready" || s.status === "video_ready"),

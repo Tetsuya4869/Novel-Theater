@@ -23,6 +23,7 @@ export async function requestGenerate(input: {
   videoLevel?: "none" | "highlight" | "rich";
   narration?: boolean;
   visibility?: Visibility;
+  aozora?: boolean;
 }): Promise<PlanResponse> {
   const res = await fetch("/api/generate", {
     method: "POST",
@@ -53,6 +54,12 @@ export async function login(name: string): Promise<{ user: { userId: string; nam
 export async function logout(): Promise<void> {
   const res = await fetch("/api/auth/logout", { method: "POST" });
   await asJson<{ ok: boolean }>(res);
+}
+
+export async function likeWork(workId: string): Promise<number> {
+  const res = await fetch(`/api/works/${workId}/like`, { method: "POST" });
+  const json = await asJson<{ likeCount: number }>(res);
+  return json.likeCount;
 }
 
 export async function fetchWork(workId: string): Promise<WorkView> {

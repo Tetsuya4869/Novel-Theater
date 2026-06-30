@@ -447,6 +447,23 @@ export class GenerationService {
     return this.d.repo.listPublic();
   }
 
+  /**
+   * いいねを 1 加算する（§10 軽いソーシャル）。閲覧可能な作品のみ。
+   * 戻り値は加算後のいいね数（閲覧不可なら undefined）。
+   * 開発用の素朴な実装（多重いいね防止やレート制限は本番で追加）。
+   */
+  async like(workId: string, userId?: string): Promise<number | undefined> {
+    return this.withWorkLock(workId, async () => {
+      const stored = await this.d.repo.get(workId);
+      if (!stored) return undefined;
+      // 非公開作品は所有者のみいいね可（実質、閲覧可能なら可）。
+      if (stored.work.visibility === "private" && !this.canEdit(stored, userId)) return undefined;
+      stored.likeCount = (stored.likeCount ?? 0) + 1;
+      await this.d.repo.save(stored);
+      return stored.likeCount;
+    });
+  }
+
   // -------------------------------------------------------------------------
 
   /** 1 シーン分の画像生成ジョブ。失敗は当該シーンに閉じ込め全体を止めない（§7.10）。 */

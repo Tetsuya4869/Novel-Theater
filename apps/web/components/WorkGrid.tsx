@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { StoredWork } from "@novel-theater/db";
 import type { Work } from "@novel-theater/types";
 
 /** 一覧用の軽量サマリ（サーバーで StoredWork から抽出して渡す）。 */
@@ -8,6 +9,7 @@ export interface WorkSummary {
   visibility: Work["visibility"];
   scenes: number;
   ready: number;
+  likeCount: number;
   thumbUrl?: string;
 }
 
@@ -38,6 +40,7 @@ export function WorkGrid({ works }: { works: WorkSummary[] }) {
             <strong>{w.title || "無題"}</strong>
             <span className="muted" style={{ fontSize: "0.8rem" }}>
               {VISIBILITY_LABEL[w.visibility]} ・ コマ {w.ready}/{w.scenes}
+              {w.likeCount > 0 && ` ・ ♥ ${w.likeCount}`}
             </span>
           </div>
         </Link>
@@ -46,8 +49,9 @@ export function WorkGrid({ works }: { works: WorkSummary[] }) {
   );
 }
 
-/** StoredWork.work からカード用サマリを作る。 */
-export function toSummary(work: Work): WorkSummary {
+/** StoredWork からカード用サマリを作る。 */
+export function toSummary(stored: StoredWork): WorkSummary {
+  const work = stored.work;
   let ready = 0;
   let thumbUrl: string | undefined;
   for (const s of work.scenes) {
@@ -63,6 +67,7 @@ export function toSummary(work: Work): WorkSummary {
     visibility: work.visibility,
     scenes: work.scenes.length,
     ready,
+    likeCount: stored.likeCount ?? 0,
     thumbUrl,
   };
 }

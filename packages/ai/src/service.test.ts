@@ -469,4 +469,20 @@ describe("アカウント / 公開範囲 / ライブラリ (Phase 4)", () => {
     expect(service.canEdit((await repo.get(owned.workId))!)).toBe(false);
     expect(service.canEdit((await repo.get(anon.workId))!, "anyone")).toBe(true);
   });
+
+  it("like: 公開作品は誰でも加算、非公開は所有者以外不可", async () => {
+    const { service } = makeService();
+    const pub = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1", visibility: "public" });
+    expect(await service.like(pub.workId, "u2")).toBe(1);
+    expect(await service.like(pub.workId, "u3")).toBe(2);
+
+    const priv = await service.plan("非公開の話。\n\n本文。", {
+      prefetchCount: 0,
+      ownerId: "u1",
+      visibility: "private",
+    });
+    expect(await service.like(priv.workId, "u2")).toBeUndefined(); // 他人は不可
+    expect(await service.like(priv.workId, "u1")).toBe(1); // 所有者は可
+    expect(await service.like("missing")).toBeUndefined();
+  });
 });

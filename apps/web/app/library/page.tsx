@@ -26,7 +26,7 @@ export default async function LibraryPage() {
   }
 
   const stored = await getService().listMine(session.userId);
-  const works = stored.map((s) => toSummary(s.work));
+  const works = stored.map((s) => toSummary(s));
 
   return (
     <main className="container container--wide">

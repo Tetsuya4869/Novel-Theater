@@ -219,6 +219,7 @@ export function Reader({ initial }: { initial: WorkView }) {
         workId={work.id}
         visibility={work.visibility}
         canEdit={canEdit}
+        likeCount={view.likeCount}
         onChangeVisibility={onChangeVisibility}
       />
 

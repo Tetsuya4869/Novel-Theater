@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeText } from "./normalize";
+import { normalizeAozora } from "./aozora";
 import { contentHash, sha256 } from "./hash";
 import { splitIntoParagraphs, sceneIndexAtOffset } from "./scenes";
 
@@ -56,5 +57,43 @@ describe("sceneIndexAtOffset", () => {
   });
   it("範囲外は -1", () => {
     expect(sceneIndexAtOffset(scenes, 100)).toBe(-1);
+  });
+});
+
+describe("normalizeAozora", () => {
+  it("ルビ（《…》と起点 ｜）を除去して親文字を残す", () => {
+    expect(normalizeAozora("吾輩《わがはい》は猫である")).toBe("吾輩は猫である");
+    expect(normalizeAozora("｜時鳥《ほととぎす》が鳴く")).toBe("時鳥が鳴く");
+  });
+
+  it("入力注記・外字注記（※［＃…］）を除去する", () => {
+    expect(normalizeAozora("本文［＃改ページ］の続き")).toBe("本文の続き");
+    expect(normalizeAozora("文字※［＃「○」、第3水準1-2-3］と続く")).toBe("文字と続く");
+  });
+
+  it("先頭の凡例ブロック（ダッシュ行で囲まれた説明）を除去する", () => {
+    const src = [
+      "見出し",
+      "-------------------------------------------------------",
+      "【テキスト中に現れる記号について】",
+      "《》：ルビ",
+      "-------------------------------------------------------",
+      "",
+      "本文が始まる。",
+    ].join("\n");
+    const out = normalizeAozora(src);
+    expect(out).not.toContain("ルビ");
+    expect(out).not.toContain("---");
+    expect(out).toContain("本文が始まる。");
+    expect(out).toContain("見出し");
+  });
+
+  it("末尾の奥付（底本：…）以降を除去する", () => {
+    const src = "本文の最後。\n\n底本：「夏目漱石全集」\n　　　1990年";
+    expect(normalizeAozora(src)).toBe("本文の最後。");
+  });
+
+  it("通常テキストはルビ等が無ければそのまま（normalizeText 相当）", () => {
+    expect(normalizeAozora("a  \r\nb\r\n")).toBe("a\nb");
   });
 });

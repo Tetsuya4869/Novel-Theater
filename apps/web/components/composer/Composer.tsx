@@ -38,6 +38,7 @@ export function Composer() {
   const [videoLevel, setVideoLevel] = useState<"none" | "highlight" | "rich">("none");
   const [narration, setNarration] = useState(false);
   const [visibility, setVisibility] = useState<"private" | "unlisted" | "public">("private");
+  const [aozora, setAozora] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +53,7 @@ export function Composer() {
         videoLevel,
         narration,
         visibility,
+        aozora,
         title: "投入テキスト",
       });
       router.push(`/theater/${workId}`);
@@ -137,6 +139,16 @@ export function Composer() {
             style={{ marginRight: "0.4rem" }}
           />
           ナレーション音声
+        </label>
+
+        <label style={{ alignSelf: "end" }} title="ルビ《》・注記［＃］・凡例・奥付を自動で整形します">
+          <input
+            type="checkbox"
+            checked={aozora}
+            onChange={(e) => setAozora(e.target.checked)}
+            style={{ marginRight: "0.4rem" }}
+          />
+          青空文庫記法を整形
         </label>
       </div>
 

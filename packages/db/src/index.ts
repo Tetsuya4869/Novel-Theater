@@ -14,6 +14,8 @@ export interface StoredWork {
   work: Work;
   /** 所有ユーザー ID（Phase 4）。匿名生成時は未設定。 */
   ownerId?: string;
+  /** いいね数（Phase 4 軽いソーシャル §10）。 */
+  likeCount?: number;
   /** 一貫性エンジン（Story Bible）。Phase 3 で構築（§7.4）。 */
   bible?: StoryBible;
   /** これまでに生成に要した USD 累計。 */

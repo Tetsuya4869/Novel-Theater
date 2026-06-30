@@ -1,6 +1,6 @@
 import type { Work } from "@novel-theater/types";
 
-export type ExportFormat = "html";
+export type ExportFormat = "html" | "md";
 
 /**
  * 作品を単一ファイルの HTML（コマ絵＋本文の「劇場」）として書き出す（§10 Phase 4 エクスポート）。
@@ -54,6 +54,48 @@ ${panels}
 <footer>Generated with Novel-Theater · ${work.scenes.length} scenes</footer>
 </body>
 </html>`;
+}
+
+/**
+ * 作品を Markdown（コマ絵＋本文）として書き出す（§10 Phase 4 エクスポート・2 形式目）。
+ * 画像は `![summary](url)` 参照。`baseUrl` で相対 URL を絶対化する。
+ */
+export function renderWorkMarkdown(work: Work, opts: { baseUrl?: string } = {}): string {
+  const abs = (url: string) =>
+    opts.baseUrl && url.startsWith("/") ? `${opts.baseUrl.replace(/\/$/, "")}${url}` : url;
+
+  const parts: string[] = [`# ${work.title}`, ""];
+  work.scenes.forEach((s, i) => {
+    const img = s.assets.find((a) => a.kind === "image" && a.status === "ready");
+    const text = work.sourceText.slice(s.sourceStart, s.sourceEnd);
+    parts.push(`## ${i + 1}. ${s.summary || "シーン"}`);
+    parts.push("");
+    parts.push(img ? `![${mdAlt(s.summary)}](${abs(img.storageUrl)})` : "_（コマ未生成）_");
+    parts.push("");
+    if (text.trim()) {
+      parts.push(text.trim());
+      parts.push("");
+    }
+  });
+  parts.push("---", `Generated with Novel-Theater · ${work.scenes.length} scenes`, "");
+  return parts.join("\n");
+}
+
+/** 作品を指定形式で書き出す（ルーティング用ヘルパ）。 */
+export function renderWork(
+  work: Work,
+  format: ExportFormat,
+  opts: { baseUrl?: string } = {},
+): { body: string; contentType: string; ext: string } {
+  if (format === "md") {
+    return { body: renderWorkMarkdown(work, opts), contentType: "text/markdown; charset=utf-8", ext: "md" };
+  }
+  return { body: renderWorkHtml(work, opts), contentType: "text/html; charset=utf-8", ext: "html" };
+}
+
+/** Markdown のリンクテキスト内で壊れる括弧類を除去する。 */
+function mdAlt(s: string): string {
+  return s.replace(/[\[\]]/g, "");
 }
 
 function esc(s: string): string {

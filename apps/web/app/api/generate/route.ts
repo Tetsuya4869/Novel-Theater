@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeAozora } from "@novel-theater/core";
 import { getService, maxInputChars } from "@/lib/services";
 import { getSession } from "@/lib/session";
 
@@ -12,6 +13,7 @@ export async function POST(req: Request) {
     videoLevel?: "none" | "highlight" | "rich";
     narration?: boolean;
     visibility?: "private" | "unlisted" | "public";
+    aozora?: boolean;
   };
   try {
     body = await req.json();
@@ -19,7 +21,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "JSON ボディが不正です" }, { status: 400 });
   }
 
-  const text = (body.text ?? "").trim();
+  // 青空文庫記法の取り込み（ルビ・注記・凡例・奥付を整形）。
+  const text = (body.aozora ? normalizeAozora(body.text ?? "") : (body.text ?? "")).trim();
   if (!text) {
     return NextResponse.json({ error: "テキストが空です" }, { status: 400 });
   }
