@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { requestGenerate } from "@/lib/client";
+import { VISIBILITIES, type Visibility } from "@/lib/visibility";
 
 // アートスタイルのプリセット（正は packages/ai の STYLE_PRESETS。
 // クライアントバンドルにサーバー専用コードを混ぜないため、ここでは値のみをミラーする）。
@@ -25,19 +26,13 @@ const VIDEO_LEVELS: Array<{ id: "none" | "highlight" | "rich"; label: string }> 
   { id: "rich", label: "多めに動画" },
 ];
 
-const VISIBILITIES: Array<{ id: "private" | "unlisted" | "public"; label: string }> = [
-  { id: "private", label: "非公開（自分のみ）" },
-  { id: "unlisted", label: "限定公開（URL を知る人）" },
-  { id: "public", label: "公開（ギャラリー掲載）" },
-];
-
 export function Composer() {
   const router = useRouter();
   const [text, setText] = useState("");
   const [styleId, setStyleId] = useState(STYLE_PRESETS[0]!.id);
   const [videoLevel, setVideoLevel] = useState<"none" | "highlight" | "rich">("none");
   const [narration, setNarration] = useState(false);
-  const [visibility, setVisibility] = useState<"private" | "unlisted" | "public">("private");
+  const [visibility, setVisibility] = useState<Visibility>("private");
   const [aozora, setAozora] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +115,7 @@ export function Composer() {
           <span className="muted">公開範囲</span>
           <select
             value={visibility}
-            onChange={(e) => setVisibility(e.target.value as "private" | "unlisted" | "public")}
+            onChange={(e) => setVisibility(e.target.value as Visibility)}
             style={{ display: "block", marginTop: "0.4rem" }}
           >
             {VISIBILITIES.map((v) => (

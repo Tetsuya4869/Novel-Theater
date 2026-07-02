@@ -93,6 +93,20 @@ describe("normalizeAozora", () => {
     expect(normalizeAozora(src)).toBe("本文の最後。");
   });
 
+  it("凡例でないダッシュ区切り（シーン境界）の間の本文は削除しない", () => {
+    const src = [
+      "第一章",
+      "――――――――――――――――",
+      "回想シーンの本文がここにある。",
+      "――――――――――――――――",
+      "現在の本文に戻る。",
+    ].join("\n");
+    const out = normalizeAozora(src);
+    expect(out).toContain("回想シーンの本文がここにある。");
+    expect(out).toContain("現在の本文に戻る。");
+    expect(out).toContain("第一章");
+  });
+
   it("通常テキストはルビ等が無ければそのまま（normalizeText 相当）", () => {
     expect(normalizeAozora("a  \r\nb\r\n")).toBe("a\nb");
   });

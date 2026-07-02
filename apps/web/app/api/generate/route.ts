@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { normalizeAozora } from "@novel-theater/core";
 import { getService, maxInputChars } from "@/lib/services";
 import { getSession } from "@/lib/session";
+import { isVisibility, type Visibility } from "@/lib/visibility";
 
 export const runtime = "nodejs";
 
@@ -12,13 +13,22 @@ export async function POST(req: Request) {
     style?: string;
     videoLevel?: "none" | "highlight" | "rich";
     narration?: boolean;
-    visibility?: "private" | "unlisted" | "public";
+    visibility?: unknown;
     aozora?: boolean;
   };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "JSON ボディが不正です" }, { status: 400 });
+  }
+
+  // 公開範囲を検証（未指定は private 既定、不正値は 400）。
+  let requestedVisibility: Visibility | undefined;
+  if (body.visibility !== undefined) {
+    if (!isVisibility(body.visibility)) {
+      return NextResponse.json({ error: "visibility が不正です" }, { status: 400 });
+    }
+    requestedVisibility = body.visibility;
   }
 
   // 青空文庫記法の取り込み（ルビ・注記・凡例・奥付を整形）。
@@ -33,13 +43,16 @@ export async function POST(req: Request) {
 
   try {
     const session = await getSession();
+    // 匿名作品は所有者を特定できず「誰でも編集可」になるため、公開/限定公開にはしない
+    // （ギャラリーに世界中から編集可能な作品が並ぶのを防ぐ）。ログイン時のみ公開範囲を尊重する。
+    const visibility: Visibility = session ? requestedVisibility ?? "private" : "private";
     const result = await getService().plan(text, {
       title: body.title,
       style: body.style,
       videoLevel: body.videoLevel,
       narration: body.narration,
       ownerId: session?.userId,
-      visibility: body.visibility,
+      visibility,
       prefetchCount: 4,
     });
     return NextResponse.json(result);

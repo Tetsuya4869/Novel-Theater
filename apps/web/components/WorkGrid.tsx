@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { StoredWork } from "@novel-theater/db";
 import type { Work } from "@novel-theater/types";
+import { VISIBILITY_LABEL } from "@/lib/visibility";
 
 /** 一覧用の軽量サマリ（サーバーで StoredWork から抽出して渡す）。 */
 export interface WorkSummary {
@@ -12,12 +13,6 @@ export interface WorkSummary {
   likeCount: number;
   thumbUrl?: string;
 }
-
-const VISIBILITY_LABEL: Record<Work["visibility"], string> = {
-  private: "非公開",
-  unlisted: "限定公開",
-  public: "公開",
-};
 
 /** 作品カードのグリッド（ライブラリ / ギャラリー共通）。 */
 export function WorkGrid({ works }: { works: WorkSummary[] }) {

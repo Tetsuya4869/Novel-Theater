@@ -1,16 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { Work } from "@novel-theater/types";
 import { likeWork } from "@/lib/client";
-
-type Visibility = Work["visibility"];
-
-const VISIBILITIES: Array<{ id: Visibility; label: string }> = [
-  { id: "private", label: "非公開（自分のみ）" },
-  { id: "unlisted", label: "限定公開（URL を知る人）" },
-  { id: "public", label: "公開（ギャラリー掲載）" },
-];
+import { VISIBILITIES, type Visibility } from "@/lib/visibility";
 
 /**
  * 作品単位の操作バー（Phase 4 §10）。
@@ -46,13 +38,12 @@ export function WorkActions({
   }
 
   async function onLike() {
+    // ボタンはリクエスト中 disabled なので、サーバーの確定値だけを反映すれば十分。
     setLiking(true);
-    setLikes((n) => n + 1); // 楽観更新
     try {
-      const count = await likeWork(workId);
-      setLikes(count);
+      setLikes(await likeWork(workId));
     } catch {
-      setLikes((n) => Math.max(0, n - 1)); // 失敗時はロールバック
+      /* 一時的な失敗は無視（次の操作で再試行できる） */
     } finally {
       setLiking(false);
     }

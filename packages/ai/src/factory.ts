@@ -1,5 +1,7 @@
 import { hasLLM, MODELS, type Env } from "@novel-theater/config";
 import type { PromptBuilder, SceneSegmenter } from "@novel-theater/types";
+import type { WorkRepository } from "@novel-theater/db";
+import type { JobQueue } from "@novel-theater/queue";
 import { ClaudeLLM } from "./llm/claude";
 import type { LLMClient } from "./llm/types";
 import { ClaudeSegmenter } from "./segment/claude";
@@ -7,7 +9,10 @@ import { HeuristicSegmenter } from "./segment/heuristic";
 import { ClaudePromptBuilder } from "./prompt/claude";
 import { TemplatePromptBuilder } from "./prompt/template";
 import { createImageProvider } from "./image";
+import { createVideoProvider } from "./video";
+import { createVoiceProvider } from "./voice";
 import type { PipelineDeps } from "./pipeline";
+import type { GenerationServiceDeps } from "./service";
 import type { Storage } from "@novel-theater/storage";
 import { ClaudeBibleBuilder, HeuristicBibleBuilder, type BibleBuilder } from "./bible";
 import { ClaudeNarrationWriter, HeuristicNarrationWriter, type NarrationWriter } from "./narration";
@@ -63,5 +68,30 @@ export function createPipelineDeps(env: Env, storage: Storage): PipelineDeps {
     promptBuilder: caps.promptBuilder,
     imageProvider: createImageProvider(env),
     storage,
+  };
+}
+
+/**
+ * GenerationService の依存一式を env + I/O（repo/queue/storage）から組む。
+ * apps/web と apps/worker はこれを共有し、プロバイダ配線の二重管理・乖離を防ぐ（§9）。
+ */
+export function createGenerationServiceDeps(
+  env: Env,
+  io: { repo: WorkRepository; queue: JobQueue; storage: Storage },
+): GenerationServiceDeps {
+  const caps = createAiCapabilities(env);
+  return {
+    env,
+    repo: io.repo,
+    queue: io.queue,
+    storage: io.storage,
+    segmenter: caps.segmenter,
+    promptBuilder: caps.promptBuilder,
+    imageProvider: createImageProvider(env),
+    videoProvider: createVideoProvider(env),
+    bibleBuilder: caps.bibleBuilder,
+    narrationWriter: caps.narrationWriter,
+    consistencyChecker: caps.consistencyChecker,
+    voiceProvider: createVoiceProvider(env),
   };
 }

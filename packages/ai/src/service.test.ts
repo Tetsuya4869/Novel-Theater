@@ -147,6 +147,37 @@ describe("失敗の局所化", () => {
     expect(ready).toBe(stored!.work.scenes.length - 1);
   });
 
+  it("processPending({skipFailed}) は failed シーンを再処理しない（worker の無限再試行防止）", async () => {
+    let calls = 0;
+    const flaky: ImageProvider = {
+      id: "flaky-skip",
+      async generate(input: ImageGenerateInput): Promise<ImageGenerateResult> {
+        calls++;
+        if (calls === 1) throw new Error("初回だけ失敗");
+        return {
+          data: new TextEncoder().encode("ok"),
+          contentType: "image/svg+xml",
+          cost: 0,
+          latencyMs: 1,
+          seed: input.seed ?? 0,
+        };
+      },
+    };
+    const { service, repo } = makeService({ imageProvider: flaky });
+    const { workId } = await service.plan(TEXT, { prefetchCount: 0 });
+    await service.processPending(workId);
+    const failedScene = (await repo.get(workId))!.work.scenes.find((s) => s.status === "failed")!;
+    expect(failedScene).toBeDefined();
+
+    // skipFailed: failed は再試行されず、以降の成功可能なプロバイダでも failed のまま。
+    await service.processPending(workId, { skipFailed: true });
+    expect((await repo.get(workId))!.work.scenes.find((s) => s.id === failedScene.id)!.status).toBe("failed");
+
+    // skipFailed なしなら再処理され復旧する。
+    await service.processPending(workId);
+    expect((await repo.get(workId))!.work.scenes.find((s) => s.id === failedScene.id)!.status).toBe("image_ready");
+  });
+
   it("失敗シーンは再生成で復旧できる", async () => {
     let calls = 0;
     const flaky: ImageProvider = {
@@ -437,6 +468,17 @@ describe("アカウント / 公開範囲 / ライブラリ (Phase 4)", () => {
     const again = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1" });
     expect(again.cached).toBe(true);
     expect(again.workId).toBe(a.workId);
+  });
+
+  it("キャッシュヒット時に所有者が公開範囲を変更すると反映される", async () => {
+    const { service, repo } = makeService();
+    const first = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1", visibility: "private" });
+    // 同一テキストを公開で再投入 → キャッシュヒットだが visibility は更新される。
+    const again = await service.plan(TEXT, { prefetchCount: 0, ownerId: "u1", visibility: "public" });
+    expect(again.cached).toBe(true);
+    expect(again.workId).toBe(first.workId);
+    expect((await repo.get(first.workId))!.work.visibility).toBe("public");
+    expect((await service.listPublic()).map((s) => s.work.id)).toContain(first.workId);
   });
 
   it("private は所有者のみ閲覧可、public は誰でも閲覧可", async () => {

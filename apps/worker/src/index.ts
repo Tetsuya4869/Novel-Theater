@@ -4,13 +4,7 @@ import { loadEnv } from "@novel-theater/config";
 import { FileWorkRepository, type StoredWork } from "@novel-theater/db";
 import { InProcessJobQueue } from "@novel-theater/queue";
 import { LocalStorage } from "@novel-theater/storage";
-import {
-  GenerationService,
-  createAiCapabilities,
-  createImageProvider,
-  createVideoProvider,
-  createVoiceProvider,
-} from "@novel-theater/ai";
+import { GenerationService, createGenerationServiceDeps } from "@novel-theater/ai";
 
 /**
  * 独立ワーカー（Phase 4 §10 DoD「ワーカーを増やして同時生成数を伸ばせる」）。
@@ -30,10 +24,13 @@ const POLL_MS = Number(process.env.NT_WORKER_POLL_MS ?? 3000);
 const CONCURRENCY = Number(process.env.NT_WORKER_CONCURRENCY ?? 4);
 const ONCE = process.argv.includes("--once");
 
-/** まだ画像が無いシーン状態（処理対象）。 */
+/**
+ * ワーカーが自動処理する未着手シーン数。failed は数えない
+ * （決定論的に失敗するシーンで有料 API を無限に叩かないため。復旧は明示的な再生成で行う）。
+ */
 function pendingCount(stored: StoredWork): number {
   return stored.work.scenes.filter(
-    (s) => s.status === "captioned" || s.status === "pending" || s.status === "failed",
+    (s) => s.status === "captioned" || s.status === "pending",
   ).length;
 }
 
@@ -42,21 +39,8 @@ function buildService(): { service: GenerationService; repo: FileWorkRepository 
   const storage = new LocalStorage({ baseDir: GENERATED_DIR, publicBaseUrl: "/generated" });
   const repo = new FileWorkRepository(WORKS_DIR);
   const queue = new InProcessJobQueue({ concurrency: CONCURRENCY });
-  const caps = createAiCapabilities(env);
-  const service = new GenerationService({
-    env,
-    repo,
-    queue,
-    storage,
-    segmenter: caps.segmenter,
-    promptBuilder: caps.promptBuilder,
-    imageProvider: createImageProvider(env),
-    videoProvider: createVideoProvider(env),
-    bibleBuilder: caps.bibleBuilder,
-    narrationWriter: caps.narrationWriter,
-    consistencyChecker: caps.consistencyChecker,
-    voiceProvider: createVoiceProvider(env),
-  });
+  // web と同一の配線を共有（プロバイダ差し替えの二重管理を避ける）。
+  const service = new GenerationService(createGenerationServiceDeps(env, { repo, queue, storage }));
   return { service, repo };
 }
 
@@ -67,7 +51,7 @@ async function tick(service: GenerationService, repo: FileWorkRepository): Promi
   for (const stored of all) {
     const pending = pendingCount(stored);
     if (pending === 0) continue;
-    await service.processPending(stored.work.id);
+    await service.processPending(stored.work.id, { skipFailed: true });
     processed += pending;
   }
   return processed;

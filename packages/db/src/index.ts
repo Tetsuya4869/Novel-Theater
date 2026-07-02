@@ -92,24 +92,53 @@ export class FileWorkRepository implements WorkRepository {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
+    await this.refresh();
+  }
+
+  /** 初回ロード相当。ディスクを走査し loaded を立てる（初回 list での二重走査を避ける）。 */
+  private async refresh(): Promise<void> {
     this.loaded = true;
     await this.scanDisk();
   }
 
-  /** ディスク上の全 .json を読み直してキャッシュ/索引を更新する。 */
+  /**
+   * ディスク上の StoredWork を取り込む。updatedAt が新しいものだけ採用し、
+   * 別プロセス（web / worker）の書き込みを反映しつつ、書き込み保留中の新しい
+   * メモリ版を古いディスク版で潰さない（§Phase4 レビュー: last-writer 退行の緩和）。
+   * 真の分散安全は Postgres の行ロック等で得る。
+   */
+  private mergeIntoCache(stored: StoredWork): void {
+    const existing = this.cache.get(stored.work.id);
+    if (existing && existing.updatedAt > stored.updatedAt) return;
+    this.cache.set(stored.work.id, stored);
+    this.hashIndex.set(stored.work.contentHash, stored.work.id);
+  }
+
+  /** ディスク上の全 .json を読み直してキャッシュ/索引を更新する（並列読み）。 */
   private async scanDisk(): Promise<void> {
     if (!existsSync(this.dir)) return;
-    const files = await readdir(this.dir);
-    for (const f of files) {
-      if (!f.endsWith(".json")) continue;
-      try {
-        const raw = await readFile(join(this.dir, f), "utf8");
-        const stored = JSON.parse(raw) as StoredWork;
-        this.cache.set(stored.work.id, stored);
-        this.hashIndex.set(stored.work.contentHash, stored.work.id);
-      } catch {
-        // 壊れたファイルは無視する。
-      }
+    const files = (await readdir(this.dir)).filter((f) => f.endsWith(".json"));
+    await Promise.all(
+      files.map(async (f) => {
+        try {
+          const raw = await readFile(join(this.dir, f), "utf8");
+          this.mergeIntoCache(JSON.parse(raw) as StoredWork);
+        } catch {
+          // 壊れたファイルは無視する。
+        }
+      }),
+    );
+  }
+
+  /** 単一作品のファイルを読み直す（別プロセスの更新を反映）。 */
+  private async readFromDisk(id: string): Promise<void> {
+    const path = join(this.dir, `${id}.json`);
+    if (!existsSync(path)) return;
+    try {
+      const raw = await readFile(path, "utf8");
+      this.mergeIntoCache(JSON.parse(raw) as StoredWork);
+    } catch {
+      // 壊れたファイルは無視する。
     }
   }
 
@@ -140,6 +169,9 @@ export class FileWorkRepository implements WorkRepository {
 
   async get(id: string): Promise<StoredWork | undefined> {
     await this.ensureLoaded();
+    // 別プロセス（worker）の生成結果を反映するため単一ファイルを読み直す。
+    // これにより read-modify-write が最新から始まり、他プロセスの成果を上書き消去しにくくなる。
+    await this.readFromDisk(id);
     return this.cache.get(id);
   }
 
@@ -150,20 +182,17 @@ export class FileWorkRepository implements WorkRepository {
   }
 
   async listByUser(userId: string): Promise<StoredWork[]> {
-    await this.ensureLoaded();
-    await this.scanDisk(); // 別プロセス（worker）の書き込みを取り込む。
+    await this.refresh(); // 別プロセスの書き込みを取り込む。
     return [...this.cache.values()].filter((s) => s.ownerId === userId).sort(byNewest);
   }
 
   async listPublic(): Promise<StoredWork[]> {
-    await this.ensureLoaded();
-    await this.scanDisk();
+    await this.refresh();
     return [...this.cache.values()].filter((s) => s.work.visibility === "public").sort(byNewest);
   }
 
   async listAll(): Promise<StoredWork[]> {
-    await this.ensureLoaded();
-    await this.scanDisk();
+    await this.refresh();
     return [...this.cache.values()].sort(byNewest);
   }
 }

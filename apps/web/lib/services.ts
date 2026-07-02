@@ -3,13 +3,7 @@ import { loadEnv } from "@novel-theater/config";
 import { FileWorkRepository } from "@novel-theater/db";
 import { InProcessJobQueue } from "@novel-theater/queue";
 import { LocalStorage } from "@novel-theater/storage";
-import {
-  GenerationService,
-  createAiCapabilities,
-  createImageProvider,
-  createVideoProvider,
-  createVoiceProvider,
-} from "@novel-theater/ai";
+import { GenerationService, createGenerationServiceDeps } from "@novel-theater/ai";
 
 /**
  * サーバー側シングルトン（API キーはクライアントへ渡さない §3.5）。
@@ -28,21 +22,8 @@ function build(): GenerationService {
   });
   const repo = new FileWorkRepository(join(cwd, ".data", "works"));
   const queue = new InProcessJobQueue({ concurrency: 3 });
-  const caps = createAiCapabilities(env);
-  return new GenerationService({
-    env,
-    repo,
-    queue,
-    storage,
-    segmenter: caps.segmenter,
-    promptBuilder: caps.promptBuilder,
-    imageProvider: createImageProvider(env),
-    videoProvider: createVideoProvider(env),
-    bibleBuilder: caps.bibleBuilder,
-    narrationWriter: caps.narrationWriter,
-    consistencyChecker: caps.consistencyChecker,
-    voiceProvider: createVoiceProvider(env),
-  });
+  // web と worker で配線を共有（乖離防止）。
+  return new GenerationService(createGenerationServiceDeps(env, { repo, queue, storage }));
 }
 
 export function getService(): GenerationService {

@@ -15,19 +15,28 @@ import { normalizeText } from "./normalize";
 /** ダッシュのみ（長音 ー は除外）で構成される区切り行。凡例ブロックの境界に使う。 */
 const DASH_LINE = /^[ \t　]*[-‐‑‒–—―─]{8,}[ \t　]*$/;
 
+/** ダッシュ行の間が「凡例」らしいかの判定（記号説明の見出し・注記語を含む）。 */
+const LOOKS_LIKE_LEGEND = /【[^】]*】|ルビ|傍点|《[^》]*》|［＃|〔[^〕]*〕|底本/;
+
 export function normalizeAozora(raw: string): string {
   let text = raw.replace(/\r\n?/g, "\n");
 
   // 1. 先頭の凡例ブロック（最初の 2 本のダッシュ行とその間）を除去。
   //    奥付側のダッシュ行を誤検出しないよう、先頭付近のみ走査する。
+  //    ただしダッシュ行はシーン区切りの装飾にも使われるため、内容が凡例らしい
+  //    （記号説明の見出し・ルビ/傍点/底本などの語を含む）場合のみ除去し、
+  //    本文の誤削除を避ける。
   const lines = text.split("\n");
   const dashIdx: number[] = [];
   for (let i = 0; i < lines.length && i < 40; i++) {
     if (DASH_LINE.test(lines[i]!)) dashIdx.push(i);
   }
   if (dashIdx.length >= 2) {
-    lines.splice(dashIdx[0]!, dashIdx[1]! - dashIdx[0]! + 1);
-    text = lines.join("\n");
+    const inner = lines.slice(dashIdx[0]! + 1, dashIdx[1]!).join("\n");
+    if (LOOKS_LIKE_LEGEND.test(inner)) {
+      lines.splice(dashIdx[0]!, dashIdx[1]! - dashIdx[0]! + 1);
+      text = lines.join("\n");
+    }
   }
 
   // 2. 末尾の奥付（底本：…）以降を除去。

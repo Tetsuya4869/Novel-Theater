@@ -148,6 +148,28 @@ DoD は 2 点 ——「①アカウントで保存して後日見返せる／他
   水平スケールする。dev のファイル版は重複処理を content_hash キャッシュで緩和するのみで、真の分散ロックは
   Postgres（行ロック）+ Redis/BullMQ + S3 への移行で得る（interface は同一）。
 
+### Phase 4 後のコードレビュー対応
+
+8 観点 × 検証で確定した不具合を修正済み:
+
+- **セッション DoS**: `verifySession` の署名長比較を文字列長からバイト長へ（非 ASCII 署名の
+  `timingSafeEqual` クラッシュ→全ルート 500 を解消）。トークンに `iat`/`exp` を埋め込み期限切れを無効化。
+- **Cookie/鍵の安全性**: 本番のみ `Secure` 付与。`NT_AUTH_SECRET` が既定の開発用値のままだと
+  `NODE_ENV=production` で `loadEnv` が起動拒否（Cookie 偽造防止）。
+- **公開範囲の検証と匿名公開**: `/api/generate` が visibility を実行時検証（不正値 400）。匿名（未ログイン）
+  作品は所有者を特定できず「誰でも編集可」になるため public/unlisted を許可せず private に矯正。
+- **キャッシュヒット時の公開範囲**: 同一テキスト再投入（キャッシュヒット）でも所有者の visibility 変更を反映。
+- **ワーカーの無限再試行**: `processPending({skipFailed})` を追加し、worker は failed シーンを自動再処理しない
+  （決定論的失敗で有料 API を 3 秒毎に永久に叩くのを防止。復旧は明示的な再生成）。
+- **共有リポジトリの鮮度**: `FileWorkRepository.get()` が単一ファイルをディスクから読み直し、`updatedAt` で
+  調停（新しいメモリ版を古いディスク版で潰さない）。worker の生成結果を web の reader が見え、
+  read-modify-write が最新から始まるため相互上書き消去を大幅に緩和（完全な分散安全は Postgres 行ロックで）。
+- **青空文庫の本文誤削除**: 凡例ブロック除去を「凡例らしい内容（記号説明の見出し・ルビ/傍点/底本語）」を
+  含む場合のみに限定し、シーン区切りのダッシュ行で本文が消えるのを防止。
+- **重複配線の集約**: `createGenerationServiceDeps`（`packages/ai/factory`）を web/worker で共有し、
+  プロバイダ配線の二重管理を排除。Visibility 型/ラベルを `apps/web/lib/visibility` に一元化。
+  エクスポートの `abs()`/コマ絵判定を共通化。`getSession` を React `cache` でリクエスト内重複排除。
+
 ## 設計上の要点
 
 - **三層分離を最初から崩さない**: フロントは軽く、生成ロジックは `packages/ai` に集約。`apps/web` と将来の `apps/worker` は `packages/ai`・`packages/types` を共有し、契約を型で固定する。

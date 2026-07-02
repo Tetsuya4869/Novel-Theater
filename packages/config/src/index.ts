@@ -26,6 +26,9 @@ export function isModelId(value: string): value is ModelId {
   return value in MODEL_PRICING;
 }
 
+/** 開発用の既定シークレット。本番でこの値のままだと loadEnv が拒否する。 */
+export const INSECURE_DEFAULT_SECRET = "dev-insecure-secret-change-me";
+
 /**
  * 環境変数スキーマ。Phase 0 では実値が無くても動作するよう、外部依存はすべて任意。
  */
@@ -53,8 +56,8 @@ const EnvSchema = z.object({
 
   STORAGE_DIR: z.string().default(".storage"),
 
-  /** HMAC セッション署名鍵（Phase 4）。未設定時は開発用の固定値にフォールバック。 */
-  NT_AUTH_SECRET: z.string().min(1).default("dev-insecure-secret-change-me"),
+  /** HMAC セッション署名鍵（Phase 4）。未設定時は開発用の固定値にフォールバック（本番は必須）。 */
+  NT_AUTH_SECRET: z.string().min(1).default(INSECURE_DEFAULT_SECRET),
 
   DATABASE_URL: z.string().optional(),
   REDIS_URL: z.string().optional(),
@@ -73,6 +76,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
       .join("\n");
     throw new Error(`環境変数の検証に失敗しました:\n${issues}`);
+  }
+  // 本番で既定シークレットのままだと Cookie を偽造されるため起動を止める（§11.4）。
+  if (source.NODE_ENV === "production" && parsed.data.NT_AUTH_SECRET === INSECURE_DEFAULT_SECRET) {
+    throw new Error(
+      "本番環境では NT_AUTH_SECRET を設定してください（既定の開発用シークレットは安全ではありません）。",
+    );
   }
   return parsed.data;
 }

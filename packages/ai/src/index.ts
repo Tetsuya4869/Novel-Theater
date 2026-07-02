@@ -58,6 +58,7 @@ export {
 export {
   createAiCapabilities,
   createPipelineDeps,
+  createGenerationServiceDeps,
   type AiCapabilities,
 } from "./factory";
 

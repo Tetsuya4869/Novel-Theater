@@ -132,6 +132,14 @@ export class GenerationService {
 
     const cachedWork = await this.d.repo.findByContentHash(hash);
     if (cachedWork) {
+      // 再投入時に公開範囲の変更を反映する（キャッシュは所有者単位なので所有者本人のみ到達）。
+      if (
+        opts.visibility &&
+        opts.visibility !== cachedWork.work.visibility &&
+        this.canEdit(cachedWork, opts.ownerId)
+      ) {
+        await this.setVisibility(cachedWork.work.id, opts.visibility, opts.ownerId);
+      }
       return { workId: cachedWork.work.id, cached: true, scenes: cachedWork.work.scenes.length };
     }
 
@@ -382,13 +390,21 @@ export class GenerationService {
     });
   }
 
-  /** 未生成/失敗シーンを同期的に処理する（worker / バッチ / テスト用）。 */
-  async processPending(workId: string, opts: { force?: boolean } = {}): Promise<void> {
+  /**
+   * 未生成/失敗シーンを同期的に処理する（worker / バッチ / テスト用）。
+   * `skipFailed` を渡すと failed シーンを再処理しない（worker のポーリングが
+   * 決定論的に失敗するシーンで有料 API を無限に叩くのを防ぐ。復旧は明示的な再生成で行う）。
+   */
+  async processPending(
+    workId: string,
+    opts: { force?: boolean; skipFailed?: boolean } = {},
+  ): Promise<void> {
     const stored = await this.d.repo.get(workId);
     if (!stored) return;
     for (let i = 0; i < stored.work.scenes.length; i++) {
       const scene = stored.work.scenes[i]!;
       if (!opts.force && SCENE_HAS_IMAGE.has(scene.status)) continue;
+      if (opts.skipFailed && scene.status === "failed") continue;
       // 失敗は当該シーンに閉じ込め、残りのシーンの処理を続行する（§7.10）。
       // runSceneJob 内で scene.status は failed に設定済み。ロックで共有オブジェクト競合を防ぐ。
       try {

@@ -1,6 +1,16 @@
-import type { Work } from "@novel-theater/types";
+import type { Asset, Scene, Work } from "@novel-theater/types";
 
 export type ExportFormat = "html" | "md";
+
+/** 表示可能なコマ絵アセット（ready の image）を返す。 */
+function readyImage(scene: Scene): Asset | undefined {
+  return scene.assets.find((a) => a.kind === "image" && a.status === "ready");
+}
+
+/** `baseUrl` があれば相対 URL（/generated/...）を絶対化する。 */
+function absUrl(url: string, baseUrl?: string): string {
+  return baseUrl && url.startsWith("/") ? `${baseUrl.replace(/\/$/, "")}${url}` : url;
+}
 
 /**
  * 作品を単一ファイルの HTML（コマ絵＋本文の「劇場」）として書き出す（§10 Phase 4 エクスポート）。
@@ -9,15 +19,12 @@ export type ExportFormat = "html" | "md";
  * `baseUrl` を渡すと相対 URL（/generated/...）を絶対化し、ファイル単体でも画像を解決できる。
  */
 export function renderWorkHtml(work: Work, opts: { baseUrl?: string } = {}): string {
-  const abs = (url: string) =>
-    opts.baseUrl && url.startsWith("/") ? `${opts.baseUrl.replace(/\/$/, "")}${url}` : url;
-
   const panels = work.scenes
     .map((s) => {
-      const img = s.assets.find((a) => a.kind === "image" && a.status === "ready");
+      const img = readyImage(s);
       const text = work.sourceText.slice(s.sourceStart, s.sourceEnd);
       const figure = img
-        ? `<img class="panel" src="${esc(abs(img.storageUrl))}" alt="${esc(s.summary)}" loading="lazy" />`
+        ? `<img class="panel" src="${esc(absUrl(img.storageUrl, opts.baseUrl))}" alt="${esc(s.summary)}" loading="lazy" />`
         : `<div class="panel panel--empty">（コマ未生成）</div>`;
       return `<section class="scene">
   ${figure}
@@ -61,16 +68,13 @@ ${panels}
  * 画像は `![summary](url)` 参照。`baseUrl` で相対 URL を絶対化する。
  */
 export function renderWorkMarkdown(work: Work, opts: { baseUrl?: string } = {}): string {
-  const abs = (url: string) =>
-    opts.baseUrl && url.startsWith("/") ? `${opts.baseUrl.replace(/\/$/, "")}${url}` : url;
-
   const parts: string[] = [`# ${work.title}`, ""];
   work.scenes.forEach((s, i) => {
-    const img = s.assets.find((a) => a.kind === "image" && a.status === "ready");
+    const img = readyImage(s);
     const text = work.sourceText.slice(s.sourceStart, s.sourceEnd);
     parts.push(`## ${i + 1}. ${s.summary || "シーン"}`);
     parts.push("");
-    parts.push(img ? `![${mdAlt(s.summary)}](${abs(img.storageUrl)})` : "_（コマ未生成）_");
+    parts.push(img ? `![${mdAlt(s.summary)}](${absUrl(img.storageUrl, opts.baseUrl)})` : "_（コマ未生成）_");
     parts.push("");
     if (text.trim()) {
       parts.push(text.trim());

@@ -14,7 +14,8 @@ async function asJson<T>(res: Response): Promise<T> {
   return json as T;
 }
 
-export type Visibility = "private" | "unlisted" | "public";
+export type { Visibility } from "@novel-theater/types";
+import type { Visibility } from "@novel-theater/types";
 
 export async function requestGenerate(input: {
   text: string;
