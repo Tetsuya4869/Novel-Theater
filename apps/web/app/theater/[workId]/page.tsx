@@ -25,8 +25,8 @@ export default async function TheaterPage({
         </p>
         <h1>作品が見つかりません</h1>
         <p className="muted">
-          非公開作品は所有者のみ閲覧できます。また Phase 1 の作品は <code>.data/works</code> に
-          永続化されるため、別環境で起動した場合は共有されません（本番は Postgres）。
+          URL が正しいかご確認ください。非公開の作品は所有者のみ閲覧できます——
+          自分の作品の場合は、作成したときと同じアカウントでログインしているか確認してください。
         </p>
       </main>
     );

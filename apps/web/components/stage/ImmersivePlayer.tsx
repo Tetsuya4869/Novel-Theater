@@ -94,13 +94,21 @@ export function ImmersivePlayer({
       <audio ref={audioRef} hidden />
 
       <div className="player__controls">
-        <button className="btn btn--ghost btn--sm" onClick={() => setIndex((i) => clampIndex(i - 1))}>
+        <button
+          className="btn btn--ghost btn--sm"
+          aria-label="前のシーンへ"
+          onClick={() => setIndex((i) => clampIndex(i - 1))}
+        >
           ⏮
         </button>
         <button className="btn btn--sm" onClick={() => setPlaying((p) => !p)}>
           {playing ? "⏸ 一時停止" : "▶ 再生"}
         </button>
-        <button className="btn btn--ghost btn--sm" onClick={() => setIndex((i) => clampIndex(i + 1))}>
+        <button
+          className="btn btn--ghost btn--sm"
+          aria-label="次のシーンへ"
+          onClick={() => setIndex((i) => clampIndex(i + 1))}
+        >
           ⏭
         </button>
         <span className="muted" style={{ fontSize: "0.85rem" }}>

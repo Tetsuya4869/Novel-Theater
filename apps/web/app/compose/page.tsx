@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { Composer } from "@/components/composer/Composer";
+import { maxInputChars } from "@/lib/services";
+
+export const runtime = "nodejs";
 
 export default function ComposePage() {
   return (
@@ -9,9 +12,9 @@ export default function ComposePage() {
       </p>
       <h1>テキストを投入</h1>
       <p className="muted">
-        貼り付けて「上映開始」を押すと、シーンに分割してコマ絵を生成します（Phase 0: 先頭 3 シーン）。
+        貼り付けて「上映開始」を押すと、シーンごとにコマ絵を順次生成します。生成は読み進めに合わせて先読みされます。
       </p>
-      <Composer />
+      <Composer maxChars={maxInputChars()} />
     </main>
   );
 }

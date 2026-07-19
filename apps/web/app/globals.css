@@ -84,12 +84,18 @@ select {
 }
 
 .toc__cell {
-  width: 20px;
-  height: 20px;
+  /* WCAG 2.5.8 の最小 24×24px を満たすサイズ。状態は色＋記号の二重符号化。 */
+  width: 24px;
+  height: 24px;
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0;
   background: #2a2420;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  line-height: 1;
+  color: #fff;
 }
 
 .toc__cell--image_ready {
@@ -99,14 +105,28 @@ select {
   background: #c9a24a;
   animation: pulse 1.2s ease-in-out infinite;
 }
+.toc__cell--image_generating::after,
+.toc__cell--video_generating::after {
+  content: "…";
+}
 .toc__cell--failed {
   background: #b04a4a;
+}
+.toc__cell--failed::after {
+  content: "✕";
 }
 .toc__cell--placeholder {
   background: #6b5a3a;
 }
+.toc__cell--placeholder::after {
+  content: "¢";
+}
 .toc__cell--video_ready {
   background: #3a86a8;
+}
+.toc__cell--video_ready::after {
+  content: "▶";
+  font-size: 9px;
 }
 .toc__cell--video_generating {
   background: #5aa6c9;
@@ -120,6 +140,14 @@ select {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
+}
+
+/* 動きを抑える設定では点滅させない（記号「…」で生成中は伝わる）。 */
+@media (prefers-reduced-motion: reduce) {
+  .toc__cell--image_generating,
+  .toc__cell--video_generating {
+    animation: none;
+  }
 }
 
 /* 擬似アニメ（Ken Burns）。動きを抑える設定では無効化する。 */
@@ -291,6 +319,13 @@ input[type="text"] {
   flex: 1;
 }
 
+.chared__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+}
+
 /* シアター（没入）モード */
 .player {
   background: #000;
@@ -425,11 +460,40 @@ input[type="text"] {
   gap: 0.4rem;
 }
 
+.notice {
+  color: var(--fg);
+  background: rgba(201, 162, 74, 0.1);
+  border: 1px solid rgba(201, 162, 74, 0.35);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+}
+
+/* テキスト内に置くボタン（リンク風）。色以外に下線でも操作可能と分かるように。 */
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #ff8a8a;
+  text-decoration: underline;
+  font: inherit;
+  font-size: inherit;
+}
+
 @media (max-width: 720px) {
   .reader {
     grid-template-columns: 1fr;
   }
+  /* モバイルの読むモード: コマ絵を本文の上に固定し、読みながら見えるようにする（§3.2）。 */
   .stage {
-    position: static;
+    position: sticky;
+    top: 0;
+    order: -1;
+    z-index: 5;
+  }
+  .stage .visual,
+  .stage img {
+    max-height: 38vh;
+    object-fit: contain;
+    background: #000;
   }
 }

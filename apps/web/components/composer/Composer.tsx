@@ -26,7 +26,7 @@ const VIDEO_LEVELS: Array<{ id: "none" | "highlight" | "rich"; label: string }> 
   { id: "rich", label: "多めに動画" },
 ];
 
-export function Composer() {
+export function Composer({ maxChars = 20_000 }: { maxChars?: number }) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [styleId, setStyleId] = useState(STYLE_PRESETS[0]!.id);
@@ -36,6 +36,7 @@ export function Composer() {
   const [aozora, setAozora] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const overLimit = text.length > maxChars;
 
   async function onGenerate() {
     setError(null);
@@ -65,11 +66,19 @@ export function Composer() {
         <textarea
           rows={12}
           value={text}
-          placeholder="小説や文章を貼り付け…（5,000〜20,000 文字程度まで）"
+          placeholder={`小説や文章を貼り付け…（上限 ${maxChars.toLocaleString()} 文字）`}
           onChange={(e) => setText(e.target.value)}
           style={{ marginTop: "0.5rem" }}
         />
       </label>
+      <p
+        aria-live="polite"
+        className={overLimit ? undefined : "muted"}
+        style={{ fontSize: "0.85rem", margin: "0.3rem 0 0", ...(overLimit ? { color: "#ff8a8a" } : {}) }}
+      >
+        {text.length.toLocaleString()} / {maxChars.toLocaleString()} 文字
+        {overLimit && "（上限を超えています。削ってから上映開始してください）"}
+      </p>
 
       <div style={{ display: "flex", gap: "0.75rem", margin: "0.75rem 0", flexWrap: "wrap" }}>
         <button className="btn btn--ghost" onClick={() => setText(SAMPLE)} disabled={loading}>
@@ -154,7 +163,11 @@ export function Composer() {
       )}
 
       <p style={{ marginTop: "1.25rem" }}>
-        <button className="btn" onClick={onGenerate} disabled={loading || text.trim().length === 0}>
+        <button
+          className="btn"
+          onClick={onGenerate}
+          disabled={loading || text.trim().length === 0 || overLimit}
+        >
           {loading ? "上映を準備中…" : "上映開始"}
         </button>
       </p>

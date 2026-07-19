@@ -13,14 +13,18 @@ export function SiteHeader({ user }: { user: { name: string } | null }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function onLogin() {
     if (!name.trim()) return;
     setBusy(true);
+    setError(null);
     try {
       await login(name.trim());
       setName("");
       router.refresh();
+    } catch {
+      setError("ログインに失敗しました。もう一度お試しください。");
     } finally {
       setBusy(false);
     }
@@ -28,9 +32,12 @@ export function SiteHeader({ user }: { user: { name: string } | null }) {
 
   async function onLogout() {
     setBusy(true);
+    setError(null);
     try {
       await logout();
       router.refresh();
+    } catch {
+      setError("ログアウトに失敗しました。もう一度お試しください。");
     } finally {
       setBusy(false);
     }
@@ -47,6 +54,11 @@ export function SiteHeader({ user }: { user: { name: string } | null }) {
         {user && <Link href="/library">マイライブラリ</Link>}
       </nav>
       <div className="siteheader__auth">
+        {error && (
+          <span role="alert" style={{ color: "#ff8a8a", fontSize: "0.85rem" }}>
+            {error}
+          </span>
+        )}
         {user ? (
           <>
             <span className="muted">{user.name}</span>

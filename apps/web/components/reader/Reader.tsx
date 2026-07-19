@@ -22,6 +22,18 @@ const MAX_TICKS = 150;
 const PREFETCH_BEFORE = 1;
 const PREFETCH_COUNT = 5;
 
+/** 目次サムネ・支援技術向けのシーン状態名。 */
+const TOC_STATUS: Record<string, string> = {
+  pending: "待機中",
+  captioned: "待機中",
+  image_generating: "生成中",
+  image_ready: "生成済み",
+  video_generating: "動画生成中",
+  video_ready: "動画あり",
+  failed: "失敗",
+  placeholder: "コスト上限",
+};
+
 type Mode = "read" | "watch";
 
 /**
@@ -33,9 +45,17 @@ export function Reader({ initial }: { initial: WorkView }) {
   const [view, setView] = useState<WorkView>(initial);
   const [active, setActive] = useState(0);
   const [mode, setMode] = useState<Mode>("read");
+  // 自動更新の世代。操作や「再開する」で進めるとポーリングの時間上限がリセットされる。
+  const [pollEpoch, setPollEpoch] = useState(0);
+  const [autoStopped, setAutoStopped] = useState(false);
   const refs = useRef<Array<HTMLDivElement | null>>([]);
   const work = view.work;
   const canEdit = view.canEdit;
+
+  // モバイルはシアター（観る）モードを既定にする（§3.2）。初回マウント時のみ判定。
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 720px)").matches) setMode("watch");
+  }, []);
 
   const blocks = useMemo(
     () =>
@@ -81,71 +101,74 @@ export function Reader({ initial }: { initial: WorkView }) {
     prefetchScenes(work.id, from, PREFETCH_COUNT).catch(() => {});
   }, [active, work.id, canEdit]);
 
-  // 生成完了をポーリングで反映。
+  // 生成完了をポーリングで反映。時間上限に達したら黙って止めず、バナーから再開できる。
   useEffect(() => {
+    setAutoStopped(false);
     let ticks = 0;
     const id = setInterval(async () => {
       ticks++;
       await refresh();
-      if (ticks > MAX_TICKS) clearInterval(id);
+      if (ticks >= MAX_TICKS) {
+        clearInterval(id);
+        setAutoStopped(true);
+      }
     }, POLL_MS);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [refresh, pollEpoch]);
+
+  // シーン操作の実行中管理。連打による有料ジョブの多重投入を防ぎ、UI に処理中を示す。
+  const pendingRef = useRef<Set<string>>(new Set());
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+  const runSceneAction = useCallback(
+    async (sceneId: string, fn: () => Promise<unknown>) => {
+      if (pendingRef.current.has(sceneId)) return; // 実行中は無視（二重投入防止）
+      pendingRef.current.add(sceneId);
+      setPendingIds(new Set(pendingRef.current));
+      try {
+        await fn();
+      } catch {
+        /* 一時的な失敗は次のポーリングで回復 */
+      }
+      await refresh();
+      setPollEpoch((e) => e + 1); // 操作したら自動更新を再開/リセット
+      // 生成中ステータスがポーリングに反映されるまで少し保持する。
+      setTimeout(() => {
+        pendingRef.current.delete(sceneId);
+        setPendingIds(new Set(pendingRef.current));
+      }, 1500);
+    },
+    [refresh],
+  );
 
   const onRegenerate = useCallback(
-    async (sceneId: string) => {
-      try {
-        await regenerateScene(work.id, sceneId);
-        setTimeout(refresh, 300);
-      } catch {
-        /* noop */
-      }
-    },
-    [work.id, refresh],
+    (sceneId: string) => runSceneAction(sceneId, () => regenerateScene(work.id, sceneId)),
+    [work.id, runSceneAction],
   );
 
   const onAnimate = useCallback(
-    async (sceneId: string) => {
-      try {
-        await animateScene(work.id, sceneId);
-        setTimeout(refresh, 300);
-      } catch {
-        /* noop */
-      }
-    },
-    [work.id, refresh],
+    (sceneId: string) => runSceneAction(sceneId, () => animateScene(work.id, sceneId)),
+    [work.id, runSceneAction],
   );
 
   const onNarrate = useCallback(
-    async (sceneId: string) => {
-      try {
-        await narrateScene(work.id, sceneId);
-        setTimeout(refresh, 300);
-      } catch {
-        /* noop */
-      }
-    },
-    [work.id, refresh],
+    (sceneId: string) => runSceneAction(sceneId, () => narrateScene(work.id, sceneId)),
+    [work.id, runSceneAction],
   );
 
   const onSavePrompt = useCallback(
-    async (sceneId: string, prompt: string) => {
-      try {
+    (sceneId: string, prompt: string) =>
+      runSceneAction(sceneId, async () => {
         await updateScenePrompt(work.id, sceneId, prompt);
         await regenerateScene(work.id, sceneId);
-        setTimeout(refresh, 300);
-      } catch {
-        /* noop */
-      }
-    },
-    [work.id, refresh],
+      }),
+    [work.id, runSceneAction],
   );
 
   const onUpdateCharacter = useCallback(
     async (characterId: string, patch: { appearance?: string; visualTags?: string[] }) => {
       try {
         await updateCharacter(work.id, characterId, patch);
-        setTimeout(refresh, 300);
+        await refresh();
       } catch {
         /* noop */
       }
@@ -193,7 +216,8 @@ export function Reader({ initial }: { initial: WorkView }) {
             key={sc.id}
             className={`toc__cell toc__cell--${sc.status}`}
             data-active={i === active}
-            title={`#${i} ${sc.summary} (${sc.status})`}
+            title={`#${i + 1} ${sc.summary}（${TOC_STATUS[sc.status] ?? sc.status}）`}
+            aria-label={`シーン${i + 1}: ${TOC_STATUS[sc.status] ?? sc.status}`}
             onClick={() => {
               setActive(i);
               if (mode === "read") scrollTo(i);
@@ -205,9 +229,38 @@ export function Reader({ initial }: { initial: WorkView }) {
         コマ絵 {s.ready}/{s.total} 生成済み
         {s.videoReady > 0 && ` ・ 動画 ${s.videoReady}`}
         {s.generating > 0 && ` ・ 生成中 ${s.generating}`}
-        {s.failed > 0 && ` ・ 失敗 ${s.failed}`}
+        {s.failed > 0 && (
+          <>
+            {" ・ "}
+            <button
+              className="linklike"
+              onClick={() => {
+                const idx = work.scenes.findIndex((sc) => sc.status === "failed");
+                if (idx >= 0) {
+                  setActive(idx);
+                  if (mode === "read") scrollTo(idx);
+                }
+              }}
+            >
+              失敗 {s.failed}（最初の失敗へ移動）
+            </button>
+          </>
+        )}
         {" ・ "}コスト ${s.costSpentUSD.toFixed(4)} / ${s.capUSD.toFixed(2)}
       </p>
+
+      {autoStopped && (
+        <p className="notice" style={{ marginBottom: "1rem" }}>
+          長時間経過したため自動更新を一時停止しました。
+          <button
+            className="btn btn--ghost btn--sm"
+            style={{ marginLeft: "0.6rem" }}
+            onClick={() => setPollEpoch((e) => e + 1)}
+          >
+            再開する
+          </button>
+        </p>
+      )}
 
       {s.capReached && (
         <p className="error" style={{ marginBottom: "1rem" }}>
@@ -252,6 +305,7 @@ export function Reader({ initial }: { initial: WorkView }) {
           </div>
           <Stage
             scene={work.scenes[active] ?? null}
+            pending={pendingIds.has(work.scenes[active]?.id ?? "")}
             onRegenerate={canEdit ? onRegenerate : undefined}
             onAnimate={canEdit ? onAnimate : undefined}
             onNarrate={canEdit ? onNarrate : undefined}

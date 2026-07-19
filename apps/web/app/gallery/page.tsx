@@ -32,7 +32,14 @@ export default async function GalleryPage({
           人気順
         </Link>
       </div>
-      <WorkGrid works={works} />
+      <WorkGrid
+        works={works}
+        empty={
+          <p className="muted">
+            公開作品はまだありません。<Link href="/compose">自分の作品を作って公開する →</Link>
+          </p>
+        }
+      />
     </main>
   );
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import type { StoredWork } from "@novel-theater/db";
 import type { Work } from "@novel-theater/types";
@@ -14,10 +15,10 @@ export interface WorkSummary {
   thumbUrl?: string;
 }
 
-/** 作品カードのグリッド（ライブラリ / ギャラリー共通）。 */
-export function WorkGrid({ works }: { works: WorkSummary[] }) {
+/** 作品カードのグリッド（ライブラリ / ギャラリー共通）。空状態は用途別に差し替えられる。 */
+export function WorkGrid({ works, empty }: { works: WorkSummary[]; empty?: ReactNode }) {
   if (works.length === 0) {
-    return <p className="muted">まだ作品がありません。</p>;
+    return <>{empty ?? <p className="muted">まだ作品がありません。</p>}</>;
   }
   return (
     <div className="workgrid">

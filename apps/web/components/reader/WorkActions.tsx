@@ -25,15 +25,18 @@ export function WorkActions({
   const [copied, setCopied] = useState(false);
   const [likes, setLikes] = useState(likeCount);
   const [liking, setLiking] = useState(false);
+  // クリップボードが使えない環境向けのフォールバック（URL をそのまま見せて手動コピーさせる）。
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
 
   async function copyShareLink() {
+    const url = `${window.location.origin}/theater/${workId}`;
     try {
-      const url = `${window.location.origin}/theater/${workId}`;
       await navigator.clipboard.writeText(url);
+      setFallbackUrl(null);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      /* クリップボード不可の環境では無視 */
+      setFallbackUrl(url);
     }
   }
 
@@ -79,6 +82,11 @@ export function WorkActions({
         <button className="btn btn--ghost btn--sm" onClick={copyShareLink}>
           {copied ? "コピーしました" : "🔗 共有リンク"}
         </button>
+      )}
+      {fallbackUrl && (
+        <span className="muted" style={{ fontSize: "0.85rem" }}>
+          コピーできませんでした。こちらを選択してコピーしてください: <code>{fallbackUrl}</code>
+        </span>
       )}
     </div>
   );

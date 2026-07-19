@@ -21,10 +21,7 @@ export default function Home() {
       </p>
       <p className="muted" style={{ marginTop: "3rem", fontSize: "0.9rem" }}>
         ログインすると作品を保存して後日見返せます（マイライブラリ）。公開設定にすると
-        ギャラリーに掲載され、URL で共有・HTML 書き出しもできます。
-        <br />
-        <code>ANTHROPIC_API_KEY</code> 未設定でも、ヒューリスティック分割＋ダミー画像で動作します。
-        設計は <code>PLAN.md</code> / <code>docs/</code> を参照。
+        ギャラリーに掲載され、URL での共有や HTML / Markdown への書き出しもできます。
       </p>
     </main>
   );

@@ -32,7 +32,14 @@ export default async function LibraryPage() {
     <main className="container container--wide">
       <h1>マイライブラリ</h1>
       <p className="muted">{session.name} さんの作品（新しい順）。</p>
-      <WorkGrid works={works} />
+      <WorkGrid
+        works={works}
+        empty={
+          <p className="muted">
+            まだ作品がありません。<Link href="/compose">テキストを投入して最初の作品を作る →</Link>
+          </p>
+        }
+      />
     </main>
   );
 }
